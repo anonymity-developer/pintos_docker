@@ -57,6 +57,8 @@ sema_init (struct semaphore *sema, unsigned value) {
    interrupts disabled, but if it sleeps then the next scheduled
    thread will probably turn interrupts back on. This is
    sema_down function. */
+// 어떤 자원에 대해서 sema_down은 1->0, 만약 0인 상태면(다른애가 점유 중이면) 현재 스레드는 block되고 기다림
+// 자원 획득에 성공했다면 sema를 감소시킴
 void
 sema_down (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -66,7 +68,8 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		// list_push_back (&sema->waiters, &thread_current ()->elem);
+		list_insert_ordered(&sema->waiters, &thread_current ()->elem, compare_priority, NULL);	// [*]1-2. 우선순위 넣기
 		thread_block ();
 	}
 	sema->value--;
@@ -102,6 +105,8 @@ sema_try_down (struct semaphore *sema) {
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
+// 어떤 자원에 대해서 sema_up은 0->1, 자원을 내려놓고 돌아가니 waiters 중에 우선순위 높은 애 뽑아서 ready상태로 만듦
+// 지금 ready_list로 간 애가 지금 실행되고 있는 애보다 우선순위가 높으면 cpu 순서 넘겨 받아야함 
 void
 sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -109,12 +114,16 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
+	if (!list_empty (&sema->waiters)){
+		list_sort(&sema->waiters, compare_priority, NULL); //[*]1-2. wait 도중 우선순위 변동 주의
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
+	}
 	sema->value++;
+	thread_preemption(); // [*]1-2. 지금 waiters 나간 애가 우선 순위가 높아서 바로 실행될 수도 있으니 부르기
 	intr_set_level (old_level);
 }
+
 
 static void sema_test_helper (void *sema_);
 
@@ -282,7 +291,8 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
+	// list_push_back (&cond->waiters, &waiter.elem);
+	list_insert_ordered(&cond->waiters, &waiter.elem, compare_priority, NULL); // [*]1-2. 우선순위 넣기
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -302,9 +312,11 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
+	if (!list_empty (&cond->waiters)){
+		list_sort (&cond->waiters, compare_priority, NULL); // [*]1-2. wait 도중 우선순위 변동 주의
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
+	}
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

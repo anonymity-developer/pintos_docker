@@ -71,7 +71,8 @@ void thread_sleep(int64_t ticks);
 void thread_wakeup(void);
 
 //[*]1-2.
-static bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+void thread_preemption (void);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC) // 주어진 포인터가 유효한 스레드 구조체를 가리키는지 확인
@@ -223,8 +224,9 @@ thread_create (const char *name, int priority,
 	thread and the newly inserted one. Yield the CPU if the
 	newly arriving thread has higher priority*/ 
 	// [*]1-2. 새로 만들어진 애의 priority가 현재 실행 중인 애 것보다 크면 실행 중인 애 나가리
-	if (thread_current()->priority < t->priority)
-		thread_yield();
+	// if (thread_current()->priority < t->priority)
+	// 	thread_yield();
+	thread_preemption();
 	return tid; // 새 스레드 ID 반환
 }
 
@@ -334,15 +336,8 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	// thread_current ()->priority = new_priority; // 현재 스레드의 우선순위를 new_priority로 설정
-	// [*]1-2. 실행 중인 애 우선 순위 바뀌었을 때 지금 ready_list의 헤드에 있는 애랑 우선 순위 비교해서 실행
-	struct thread *now_running = thread_current();
-	now_running->priority =  new_priority;
-	struct list_elem *e = list_begin (&ready_list); // 여기서 list_front 쓰면 리스트 비어있을 때 못 얻어 오는 경우 생겨서 fail
-	struct thread *ready_head = list_entry (e, struct thread, elem);
-	if (!list_empty(&ready_list) && (now_running->priority < ready_head->priority)){
-		thread_yield();
-	} 
+	thread_current ()->priority = new_priority; // 현재 스레드의 우선순위를 new_priority로 설정
+	thread_preemption ();
 }
 
 /* Returns the current thread's priority. */
@@ -688,11 +683,22 @@ compare_wakeup_tick (const struct list_elem *a, const struct list_elem *b, void 
 }
 
 // [*]1-2. priority 비교 (내림차순)
-static bool
+bool
 compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
     const struct thread *t_a = list_entry (a, struct thread, elem); // 첫 번째 스레드
     const struct thread *t_b = list_entry (b, struct thread, elem); // 두 번째 스레드
 
     return t_a->priority > t_b->priority;
 	// 삽입하려는 요소(a)가 검사 중인 요소(b)보다 크면 true 반환, 그 위치에 insert 하게 함
+}
+
+// [*]1-2. 실행 중인 애랑 지금 ready_list의 헤드에 있는 애랑 우선 순위 비교해서 실행
+void
+thread_preemption (void){
+	struct thread *now_running = thread_current();
+	struct list_elem *e = list_begin (&ready_list); // 여기서 list_front 쓰면 리스트 비어있을 때 못 얻어 오는 경우 생겨서 fail
+	struct thread *ready_head = list_entry (e, struct thread, elem);
+	if (!list_empty(&ready_list) && (now_running->priority < ready_head->priority)){
+		thread_yield();
+	} 
 }
