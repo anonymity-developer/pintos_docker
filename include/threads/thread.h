@@ -94,7 +94,7 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
-	int64_t wakeup_tick; //[*]1-1. local tick 부여
+	
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -108,6 +108,13 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	int64_t wakeup_tick; //[*]1-1. local tick 부여
+	
+	int init_priority; //[*]1-2-3. 초창기 중요도
+	struct lock *wait_on_lock; //[*]1-2-3. release되기를 기다리고 있는 lock
+	struct list donations; //[*]1-2-3. 중요도 양도한 애 리스트
+	struct list_elem d_elem; //[*]1-2-3. 중요도 양도한 애 관리(prev, next)
 };
 
 int64_t min_wakeup_tick; //[*]1-1. global tick 선언
@@ -148,7 +155,7 @@ void do_iret (struct intr_frame *tf);
 
 void thread_sleep (int64_t ticks); //[*]1-1.
 void thread_wakeup (void); //[*]1-1.
-bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);  //[*]1-2.
-void thread_preemption (void); //[*]1-2.
+bool thread_compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);  //[*]1-2-1.
+void thread_preemption (void); //[*]1-2-1.
 
 #endif /* threads/thread.h */

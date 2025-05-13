@@ -70,8 +70,8 @@ static bool compare_wakeup_tick (const struct list_elem *a, const struct list_el
 void thread_sleep(int64_t ticks);
 void thread_wakeup(void);
 
-//[*]1-2.
-bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+//[*]1-2-1. [*]1-2-2.
+bool thread_compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void thread_preemption (void);
 
 /* Returns true if T appears to point to a valid thread. */
@@ -223,7 +223,7 @@ thread_create (const char *name, int priority,
 	/* compare the priorities of the currently running
 	thread and the newly inserted one. Yield the CPU if the
 	newly arriving thread has higher priority*/ 
-	// [*]1-2. 새로 만들어진 애의 priority가 현재 실행 중인 애 것보다 크면 실행 중인 애 나가리
+	// [*]1-2-1. 새로 만들어진 애의 priority가 현재 실행 중인 애 것보다 크면 실행 중인 애 나가리
 	// if (thread_current()->priority < t->priority)
 	// 	thread_yield();
 	thread_preemption();
@@ -262,7 +262,7 @@ thread_unblock (struct thread *t) {
 	ASSERT (t->status == THREAD_BLOCKED); // 스레드가 BLOCKED (대기) 상태인지 확인
 
 	// list_push_back (&ready_list, &t->elem); // 스레드를 준비 큐의 뒤에 추가
-	list_insert_ordered(&ready_list, &t->elem, compare_priority, NULL); // [*]1-2. 스레드를 우선순위 맞춰 준비 큐에 추가
+	list_insert_ordered(&ready_list, &t->elem, thread_compare_priority, NULL); // [*]1-2-1. 스레드를 우선순위 맞춰 준비 큐에 추가
 
 	t->status = THREAD_READY; // 스레드 상태를 READY (실행 준비)로 변경
 	intr_set_level (old_level); // 인터럽트 이전 상태로 복원
@@ -327,7 +327,7 @@ thread_yield (void) {
 	old_level = intr_disable (); // 인터럽트 비활성화
 	if (curr != idle_thread) // 현재 스레드가 아이들 스레드가 아니면
 		// list_push_back (&ready_list, &curr->elem); // 현재 스레드를 준비 큐의 뒤에 추가
-		list_insert_ordered(&ready_list, &curr->elem, compare_priority, NULL);	// [*]1-2. 스레드를 우선순위 맞춰 준비 큐에 추가
+		list_insert_ordered(&ready_list, &curr->elem, thread_compare_priority, NULL);	// [*]1-2-1. 스레드를 우선순위 맞춰 준비 큐에 추가
 	
 	do_schedule (THREAD_READY); // 현재 스레드 상태를 READY (실행 준비)로 설정하고 스케줄러 호출
 	intr_set_level (old_level); // 인터럽트 이전 상태로 복원
@@ -435,6 +435,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *); // 스레드 스택 포인터 설정 (페이지 끝에서부터 아래로)
 	t->priority = priority; // 스레드 우선순위 설정
 	t->magic = THREAD_MAGIC; // 스택 오버플로 감지용 매직 값 설정
+
+	// [*]1-2-3. 구조체 수정한거 초기화
+	t->init_priority = priority;
+	t->wait_on_lock = NULL;
+  	list_init (&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -656,7 +661,7 @@ thread_wakeup(void) {
             e = list_remove (e); // sleep_list에서 스레드 제거
             t->status = THREAD_READY; // 스레드 상태를 READY로 변경
             // list_push_back (&ready_list, &t->elem); // ready_list에 스레드 추가
-			list_insert_ordered(&ready_list, &t->elem, compare_priority, NULL); // [*]1-2. 스레드를 우선순위 맞춰 준비 큐에 추가
+			list_insert_ordered(&ready_list, &t->elem, thread_compare_priority, NULL); // [*]1-2-1. 스레드를 우선순위 맞춰 준비 큐에 추가
 
         } else {
 			break; // 순서대로 넣었으니까 로컬 틱이 아직 깰 시간이 아닌 애 만나면 빠져나오면 됨
@@ -682,9 +687,9 @@ compare_wakeup_tick (const struct list_elem *a, const struct list_elem *b, void 
 	// list_insert_ordered돌 때 삽입하려는 요소(a)가 검사 중인 요소(b)보다 작으면 true 반환, 그 위치에 insert 하게 함
 }
 
-// [*]1-2. priority 비교 (내림차순)
+// [*]1-2-1. priority 비교 (내림차순)
 bool
-compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+thread_compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
     const struct thread *t_a = list_entry (a, struct thread, elem); // 첫 번째 스레드
     const struct thread *t_b = list_entry (b, struct thread, elem); // 두 번째 스레드
 
@@ -692,7 +697,7 @@ compare_priority (const struct list_elem *a, const struct list_elem *b, void *au
 	// 삽입하려는 요소(a)가 검사 중인 요소(b)보다 크면 true 반환, 그 위치에 insert 하게 함
 }
 
-// [*]1-2. 실행 중인 애랑 지금 ready_list의 헤드에 있는 애랑 우선 순위 비교해서 실행
+// [*]1-2-1. 실행 중인 애랑 지금 ready_list의 헤드에 있는 애랑 우선 순위 비교해서 실행
 void
 thread_preemption (void){
 	struct thread *now_running = thread_current();
