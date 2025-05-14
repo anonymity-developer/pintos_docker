@@ -69,7 +69,7 @@ sema_down (struct semaphore *sema) {
 	old_level = intr_disable ();
 	while (sema->value == 0) {
 		// list_push_back (&sema->waiters, &thread_current ()->elem);
-		list_insert_ordered(&sema->waiters, &thread_current ()->elem, thread_compare_priority, NULL);	// [*]1-2. 우선순위 넣기
+		list_insert_ordered(&sema->waiters, &thread_current ()->elem, thread_compare_priority, NULL);	// [*]1-2-2. 우선순위 넣기
 		thread_block ();
 	}
 	sema->value--;
@@ -115,12 +115,12 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters)){
-		list_sort(&sema->waiters, thread_compare_priority, NULL); //[*]1-2. wait 도중 우선순위 변동 주의
+		list_sort(&sema->waiters, thread_compare_priority, NULL); //[*]1-2-2. wait 도중 우선순위 변동 주의
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
 	}
 	sema->value++;
-	thread_preemption(); // [*]1-2. 지금 waiters 나간 애가 우선 순위가 높아서 바로 실행될 수도 있으니 부르기
+	thread_preemption(); // [*]1-2-2. 지금 waiters 나간 애가 우선 순위가 높아서 바로 실행될 수도 있으니 부르기
 	intr_set_level (old_level);
 }
 
@@ -195,9 +195,22 @@ void
 lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
-	ASSERT (!lock_held_by_current_thread (lock));
+	ASSERT (!lock_held_by_current_thread (lock)); // 현재 스레드가 이 락을 이미 가지고 있다면 금지
 
-	sema_down (&lock->semaphore);
+	// [*]1-2-3. 만약 락을 요청했는데 나보다 우선순위 낮은 애가 보유 중이라면, sema down 전에 우선순위 넘겨 줌
+	struct thread *t = thread_current();
+	if ((lock->holder != NULL) && (lock->holder->priority < t->priority)){
+		lock->holder->priority = t->priority;
+		// t->wait_on_lock = lock; // !! 다시 만지기
+		// list_push_back (&lock->waiters, &waiter.elem);
+		thread_preemption();
+	}
+
+
+	// 자원 요청(lock 획득 시도), value == 1이면 락을 획득하고 value = 0로 설정됨 → 바로 통과
+	// value == 0이면 누군가 락을 보유 중 → 현재 스레드는 waiters 리스트에 들어가고 block 상태로 대기
+	sema_down (&lock->semaphore); 
+	// 락을 획득했다면 기록
 	lock->holder = thread_current ();
 }
 
@@ -207,6 +220,7 @@ lock_acquire (struct lock *lock) {
 
    This function will not sleep, so it may be called within an
    interrupt handler. */
+// 락이 “지금 가능한지”만 확인하고, 안 되면 다른 일 하려는 경우에 사용
 bool
 lock_try_acquire (struct lock *lock) {
 	bool success;
@@ -226,10 +240,14 @@ lock_try_acquire (struct lock *lock) {
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+// 락 내려놓고 갈 때는 본인 우선순위로 복귀
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+
+	// [*]1-2-3. 락 내려놓고 갈 때는 본인 우선순위로 복귀
+	lock->holder->priority = lock->holder->init_priority;
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
@@ -261,7 +279,7 @@ cond_init (struct condition *cond) {
 	list_init (&cond->waiters);
 }
 
-// [*]1-2. semaphore_elem 받았을 때 정렬 삽입 시 이용하는 함수
+// [*]1-2-2. semaphore_elem 받았을 때 정렬 삽입 시 이용하는 함수
 bool
 sema_compare_priority (struct list_elem *a, struct list_elem *b, void *aux) {
   struct semaphore_elem *l_sema = list_entry (a, struct semaphore_elem, elem);
@@ -296,7 +314,7 @@ sema_compare_priority (struct list_elem *a, struct list_elem *b, void *aux) {
    we need to sleep. */
 void
 cond_wait (struct condition *cond, struct lock *lock) {
-	
+
 	struct semaphore_elem waiter;
 
 	ASSERT (cond != NULL);
@@ -307,7 +325,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	sema_init (&waiter.semaphore, 0);
 
 	// list_push_back (&cond->waiters, &waiter.elem);
-	// [*]1-2. 우선순위 넣기, semaphore_elem 구조체 받으므로 비교함수 다른 거 사용
+	// [*]1-2-2. 우선순위 넣기, semaphore_elem 구조체 받으므로 비교함수 다른 거 사용
 	list_insert_ordered(&cond->waiters, &waiter.elem, sema_compare_priority, NULL);
 
 	lock_release (lock);
@@ -330,7 +348,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters)){
-		// [*]1-2.  wait 도중 우선순위 변동 주의, semaphore_elem 구조체 받으므로 비교함수 다른 거 사용
+		// [*]1-2-2.  wait 도중 우선순위 변동 주의, semaphore_elem 구조체 받으므로 비교함수 다른 거 사용
 		list_sort (&cond->waiters, sema_compare_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);

@@ -70,9 +70,10 @@ static bool compare_wakeup_tick (const struct list_elem *a, const struct list_el
 void thread_sleep(int64_t ticks);
 void thread_wakeup(void);
 
-//[*]1-2-1. [*]1-2-2.
+//[*]1-2-1. [*]1-2-2. [*]1-2-3.
 bool thread_compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void thread_preemption (void);
+void thread_priority_refresh (void);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC) // 주어진 포인터가 유효한 스레드 구조체를 가리키는지 확인
@@ -333,11 +334,25 @@ thread_yield (void) {
 	intr_set_level (old_level); // 인터럽트 이전 상태로 복원
 }
 
+// [*]1-2-3. donation 받은 priority와 새로 설정된 priority 비교
+void
+thread_priority_refresh (void) {
+	struct thread *t = thread_current();
+	if (t->init_priority > t->priority){
+		t->priority = t->init_priority;
+		// list_init (t.donations); // !! 다시 만지기 
+	}
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority; // 현재 스레드의 우선순위를 new_priority로 설정
-	thread_preemption ();
+	// [*]1-2-2.현재 스레드의 우선순위를 new_priority로 설정
+	// [*]1-2-3. 스레드 우선순위가 바뀔때(기부 받는 것 말고)는 init_priority가 바뀌도록 설정
+	thread_current ()-> init_priority = new_priority; 
+	thread_priority_refresh (); // [*]1-2-3. donation 받은 priority와 새로 설정된 priority 비교
+	list_sort (&ready_list, thread_compare_priority, NULL); // !!
+	thread_preemption (); // [*]1-2-2. 현재 실행 중인 애와 레디 큐 헤드 비교 후 실행
 }
 
 /* Returns the current thread's priority. */
