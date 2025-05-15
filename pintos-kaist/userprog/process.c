@@ -22,6 +22,8 @@
 #include "vm/vm.h"
 #endif
 
+// commit test
+
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
