@@ -1,6 +1,6 @@
 ---
 name: "✨Update Funtion✨"
-about: Suggest an idea for this project
+about: Funtion 작업 사항을 입력해주세요.
 title: ''
 labels: ''
 assignees: ''
