@@ -6,6 +6,11 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 
+/*
+gdt는 가상주소에 대한 세그먼트를 관리한다
+각 세그먼트의 시작주소, 크기 접근권한 등을 정의한다
+*/
+
 /* The Global Descriptor Table (GDT).
  *
  * The GDT, an x86-64 specific structure, defines segments that can

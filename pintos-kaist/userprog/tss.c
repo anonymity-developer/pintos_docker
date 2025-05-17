@@ -7,6 +7,14 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 
+ // user모드에서 커널모드로 전환시 스택 포인터를 찾는 용도로 이용됨
+
+/* 예를들어 사용자 프로세스가 인터럽트 핸들러에 진입할 때,
+ 즉 시스템 콜이나 인터럽트 발생 시 커널스택의 포인터를 찾기 위해 TSS를 참조함 
+
+ tss는 수정할 필요 없음, tss의 작동방식을 이해하고 싶으면 코드를 읽어봐도 됨
+ */
+
 /* The Task-State Segment (TSS).
  *
  *  Instances of the TSS, an x86-64 specific structure, are used to
