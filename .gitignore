@@ -18,10 +18,10 @@
 *.result
 
 # 빌드 디렉터리
-/build/
-/bin/
-/obj/
-/output/
+build/
+bin/
+obj/
+output/
 
 # core dump
 core
