@@ -8,15 +8,17 @@ Calibrating timer...  209,510,400 loops/s.
 hd0:0: detected 313 sector (156 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 102 sector (51 kB) disk, model "QEMU HARDDISK", serial "QM00003"
-Formatting file system...Kernel PANIC at ../../threads/thread.c:338 in thread_yield(): assertion `!intr_context()' failed.
-Call stack: 0x8004217e48 0x80042071d0 0x8004207e12 0x800420a122 0x800421440f 0x8004208f1a 0x8004209338 0x8004207397.
-The `backtrace' program can make call stacks useful.
-Read "Backtraces" in the "Debugging Tools" chapter
-of the Pintos documentation for more information.
-Timer: 62 ticks
-Thread: 30 idle ticks, 32 kernel ticks, 0 user ticks
+Formatting file system...done.
+Boot complete.
+Putting 'create-null' into the file system...
+Executing 'create-null':
+Execution of 'create-null' complete.
+Timer: 64 ticks
+Thread: 33 idle ticks, 31 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
-hd0:1: 0 reads, 0 writes
-hd1:0: 0 reads, 0 writes
-Console: 1032 characters output
-Key
+hd0:1: 33 reads, 232 writes
+hd1:0: 102 reads, 0 writes
+Console: 797 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...

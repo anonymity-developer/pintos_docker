@@ -53,6 +53,7 @@ tid_t process_create_initd(const char *file_name)
 		return TID_ERROR;
 	strlcpy(fn_copy, file_name, PGSIZE);
 
+	// file_name ="args-single"
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -73,7 +74,6 @@ initd(void *f_name)
 	if (process_exec(f_name) < 0)
 		PANIC("Fail to launch initd\n");
 
-	// 
 	NOT_REACHED();
 }
 
@@ -182,29 +182,66 @@ int process_exec(void *f_name)
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+
 	/* We first kill the current context */
 	// 부모-자식 관계 상에서 자식 프로세스가 “새로운 실행 파일을 불러오기 전에” ,
 	// 기존 환경을 청소하는 작업.
 	process_cleanup();
 
 	/*
-
 	for implement argument passing
-
 	before load,
-	스택 프레임에 프로그램 실행을 위한 정보들(인자 문자열, argv 배열, argc, fake return address 등)을 
+	스택 프레임에 프로그램 실행을 위한 정보들(인자 문자열, argv 배열, argc, fake return address 등)을
 	쌓아넣기 위해 받은 입력값을 파싱하는 작업을 이 위치에서 수행합니다.
-
 	*/
+
+	// 유저 애플리케이션은 인자 전달을 위해 %rdi, %rsi, %rdx, %rcx, %r8, %r9 순서로 정수 레지스터를 사용함.
+
+	/*
+	공백을 기준으로 문자열을 나눠서,
+	첫 번째 단어는 프로그램 이름
+	두번째 단어부터 첫번째 인자로 처리되도록 구현
+	*/
+
+
+	// 
+
+	int argc = 0;
+	char *argv[99];
+	char *token, *save_ptr;
+
+	// 현재 file_name = "args-single onearg"
+
+	token = strtok_r(file_name, " ", &save_ptr);
+	// 모든 토큰을 처리
+	while (token != NULL && argc < 99)
+	{
+		// 현재 토큰을 argv 배열에 저장
+		argv[argc] = token;
+		argc++;
+
+		// 다음 토큰 가져오기
+		token = strtok_r(NULL, " ", &save_ptr);
+	}
+
+	if (argc < 99)
+	{
+		argv[argc] = NULL;
+	}
+
+	// 레지스터에 main함수에서 쓰이는 첫번째 인자와 두번째 인자 전달.
+	_if.R.rdi = argc;
+	_if.R.rsi = argv[0];
 
 	/* And then load the binary */
 	success = load(file_name, &_if);
+
+	
 
 	/* If load failed, quit. */
 	palloc_free_page(file_name);
 	if (!success)
 		return -1;
-	
 
 	// 여기부터 유저 영역
 	/* Start switched process. */
@@ -213,7 +250,7 @@ int process_exec(void *f_name)
 	// 커널에선 시스템 콜 번호와 인자를 확인한 후
 	// 그에 맞는 시스템 콜 핸들러 함수가 호출되고
 	// 그 핸들러가 요청을 적당히 처리하고(출력, 프로세스 관리 등) ㄱ결과를 사용자 프로그램에 반환한 뒤 사용자 모드로 복귀
-	
+
 	do_iret(&_if);
 	// do_iret가 호출된 이후로부턴 syscall.c에 구현된 syscall handler가 역할을 함.
 	NOT_REACHED();
@@ -455,10 +492,12 @@ load(const char *file_name, struct intr_frame *if_)
 		goto done;
 
 	/* Start address. */
-	if_->rip = ehdr.e_entry;
+	// 프로그램 카운터
+	//if_->rip = ehdr.e_entry;
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	//if_->
 
 	success = true;
 
