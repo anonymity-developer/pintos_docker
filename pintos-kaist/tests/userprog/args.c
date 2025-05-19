@@ -5,6 +5,8 @@
 
 #include "tests/lib.h"
 
+
+// write (msg에서)와 exit(return에서) 시스템콜 호출
 int
 main (int argc, char *argv[]) 
 {

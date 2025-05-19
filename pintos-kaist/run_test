@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# --- 위치 계산 -------------------------------------------------------------
+
+ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="$ROOT/utils:$PATH"  
+
+# 기본 suite 디렉터리
+DEFAULT_SUITE=userprog
+
+# === 인자 처리 ===============================================
+if [[ $# -eq 0 ]]; then
+  echo "Usage: $0 [suite/]test-name"
+  exit 1
+fi
+
+if [[ $1 == */* ]]; then
+  TEST=$1               # 'threads/alarm-multiple' 처럼 suite 포함
+else
+  TEST=$DEFAULT_SUITE/$1 # 인자 하나면 기본 suite 붙이기
+fi
+
+SUITE=${TEST%%/*}        # userprog
+NAME=${TEST##*/}         # exec-missing
+BUILD="$ROOT/$SUITE/build"
+
+# --- 빌드 ------------------------------------------------------------------
+
+echo "[+] Building $TEST ..."
+make -C "$BUILD" tests/"$SUITE"/"$NAME".result
+
+# --- 실행 ------------------------------------------------------------------
+cd "$BUILD"    
+echo "[+] Running $TEST ..."
+pintos -v -k -T 60 -m 20 -- -q run "$NAME"
+#      └─ PATH에 등록해 두었으니 'pintos'만 호출

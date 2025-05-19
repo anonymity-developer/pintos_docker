@@ -15,6 +15,9 @@
 #include "userprog/process.h"
 #endif
 
+
+// test
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -735,7 +738,7 @@ void thread_preemption(void)
 	struct thread *now_running = thread_current();
 	struct list_elem *e = list_begin(&ready_list); // 여기서 list_front 쓰면 리스트 비어있을 때 못 얻어 오는 경우 생겨서 fail
 	struct thread *ready_head = list_entry(e, struct thread, elem);
-	if (!list_empty(&ready_list) && (now_running->priority < ready_head->priority))
+	if (!list_empty(&ready_list) && (thread_current() != idle_thread) && (now_running->priority < ready_head->priority))
 	{
 		thread_yield();
 	}
