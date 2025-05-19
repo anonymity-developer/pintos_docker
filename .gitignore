@@ -32,3 +32,7 @@ core
 
 # macOS
 .DS_Store
+
+# 특정파일
+goodmorning.c
+run_test.sh

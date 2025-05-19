@@ -11,6 +11,15 @@
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
+/*
+이 파일에서 프로세스 생성과 실행을 관리한다
+유저프로세스가 커널 기능에 접근하고 싶을 때, 시스템 콜을 호출하여 커널에게 요청한다
+
+현재는 메세지만 출력하고 프로세스를 종료하는 기능만 있다
+
+시스템 콜에 필요한 나머지 기능을 여기에 구현해야한다
+*/
+
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler

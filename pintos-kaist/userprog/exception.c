@@ -6,6 +6,17 @@
 #include "threads/thread.h"
 #include "intrinsic.h"
 
+/*
+사용자 프로세스가 허용되지 않은 작업을 하거나 커널에 접근하려할때,
+예외 혹은 falut가 발생하며 커널로 제어권이 넘어간다.(trap)
+
+아직 정교한 예외처리는 구현되지 않았고
+에러메시지 출력 -> 프로세스 종료만 구현되어있다
+
+사용자 메모리 접근을 검증하기 위해 page fault handler를 이용할 수 있다
+
+*/
+
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
