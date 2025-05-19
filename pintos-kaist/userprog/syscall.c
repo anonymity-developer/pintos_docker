@@ -40,7 +40,42 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+  // TODO: Your implementation goes here.
+
+  /* rax = 시스템 콜 넘버 */
+  int syscall_n = f->R.rax; /* 시스템 콜 넘버 */
+  switch (syscall_n)
+  {
+  case SYS_HALT:
+    halt();
+    break;
+  case SYS_EXIT:
+    exit(f->R.rdi);
+    break;
+  case SYS_WRITE:
+    f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+    break;
+  default:
+    thread_exit ();
+    break;
+  }
+  // printf ("system call!\n");
+  
+}
+
+void exit(int status) {
+  struct thread *cur = thread_current();
+  printf("%s: exit(%d)\n", cur->name, status);
+  thread_exit();  // process_exit() → schedule() → _cleanup
+}
+
+int write(int fd, const void *buffer, unsigned size) {
+  if (!is_user_vaddr(buffer) || buffer + size > (void*)PHYS_BASE)
+    exit(-1);
+  if (fd == STDOUT_FILENO) {
+    putbuf(buffer, size);
+    return size;
+  }
+  // fd > 1인 경우는 나중에 file_write(fdt[fd], buffer, size) 구현
+  return -1;
 }
