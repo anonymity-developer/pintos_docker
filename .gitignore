@@ -13,6 +13,9 @@
 *.hex
 *.dis
 *.dump
+*.output
+*.errors
+*.result
 
 # 빌드 디렉터리
 /build/
