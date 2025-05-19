@@ -14,8 +14,8 @@ Putting 'fork-close' into the file system...
 Putting 'sample.txt' into the file system...
 Executing 'fork-close':
 Execution of 'fork-close' complete.
-Timer: 71 ticks
-Thread: 32 idle ticks, 39 kernel ticks, 0 user ticks
+Timer: 67 ticks
+Thread: 36 idle ticks, 31 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 61 reads, 258 writes
 hd1:0: 110 reads, 0 writes

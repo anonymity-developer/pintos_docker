@@ -13,8 +13,8 @@ Boot complete.
 Putting 'bad-read' into the file system...
 Executing 'bad-read':
 Execution of 'bad-read' complete.
-Timer: 71 ticks
-Thread: 35 idle ticks, 36 kernel ticks, 0 user ticks
+Timer: 64 ticks
+Thread: 36 idle ticks, 29 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 34 reads, 234 writes
 hd1:0: 103 reads, 0 writes

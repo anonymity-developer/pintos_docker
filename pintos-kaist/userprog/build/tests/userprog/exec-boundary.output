@@ -14,8 +14,8 @@ Putting 'exec-boundary' into the file system...
 Putting 'child-simple' into the file system...
 Executing 'exec-boundary':
 Execution of 'exec-boundary' complete.
-Timer: 76 ticks
-Thread: 39 idle ticks, 37 kernel ticks, 0 user ticks
+Timer: 74 ticks
+Thread: 37 idle ticks, 37 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 61 reads, 452 writes
 hd1:0: 207 reads, 0 writes

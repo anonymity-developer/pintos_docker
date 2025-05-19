@@ -14,8 +14,8 @@ Putting 'exec-once' into the file system...
 Putting 'child-simple' into the file system...
 Executing 'exec-once':
 Execution of 'exec-once' complete.
-Timer: 73 ticks
-Thread: 37 idle ticks, 36 kernel ticks, 0 user ticks
+Timer: 74 ticks
+Thread: 37 idle ticks, 38 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 61 reads, 446 writes
 hd1:0: 204 reads, 0 writes

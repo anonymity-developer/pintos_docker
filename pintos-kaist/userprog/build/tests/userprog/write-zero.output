@@ -14,8 +14,8 @@ Putting 'write-zero' into the file system...
 Putting 'sample.txt' into the file system...
 Executing 'write-zero':
 Execution of 'write-zero' complete.
-Timer: 72 ticks
-Thread: 36 idle ticks, 37 kernel ticks, 0 user ticks
+Timer: 71 ticks
+Thread: 33 idle ticks, 38 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 61 reads, 248 writes
 hd1:0: 105 reads, 0 writes

@@ -14,8 +14,8 @@ Putting 'read-normal' into the file system...
 Putting 'sample.txt' into the file system...
 Executing 'read-normal':
 Execution of 'read-normal' complete.
-Timer: 69 ticks
-Thread: 36 idle ticks, 33 kernel ticks, 0 user ticks
+Timer: 72 ticks
+Thread: 36 idle ticks, 37 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 60 reads, 248 writes
 hd1:0: 105 reads, 0 writes

@@ -15,8 +15,8 @@ Putting 'sample.txt' into the file system...
 Putting 'child-close' into the file system...
 Executing 'multi-child-fd':
 Execution of 'multi-child-fd' complete.
-Timer: 80 ticks
-Thread: 41 idle ticks, 39 kernel ticks, 0 user ticks
+Timer: 74 ticks
+Thread: 39 idle ticks, 35 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 90 reads, 488 writes
 hd1:0: 220 reads, 0 writes

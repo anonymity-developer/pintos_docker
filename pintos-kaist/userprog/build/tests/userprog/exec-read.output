@@ -15,8 +15,8 @@ Putting 'sample.txt' into the file system...
 Putting 'child-read' into the file system...
 Executing 'exec-read':
 Execution of 'exec-read' complete.
-Timer: 73 ticks
-Thread: 37 idle ticks, 36 kernel ticks, 0 user ticks
+Timer: 75 ticks
+Thread: 41 idle ticks, 34 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 90 reads, 506 writes
 hd1:0: 229 reads, 0 writes

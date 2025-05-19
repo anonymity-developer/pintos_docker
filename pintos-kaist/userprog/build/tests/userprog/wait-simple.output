@@ -14,8 +14,8 @@ Putting 'wait-simple' into the file system...
 Putting 'child-simple' into the file system...
 Executing 'wait-simple':
 Execution of 'wait-simple' complete.
-Timer: 72 ticks
-Thread: 41 idle ticks, 31 kernel ticks, 0 user ticks
+Timer: 70 ticks
+Thread: 37 idle ticks, 33 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 61 reads, 446 writes
 hd1:0: 204 reads, 0 writes

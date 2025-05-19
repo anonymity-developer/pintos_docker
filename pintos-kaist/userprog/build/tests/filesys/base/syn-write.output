@@ -15,7 +15,7 @@ Putting 'child-syn-wrt' into the file system...
 Executing 'syn-write':
 Execution of 'syn-write' complete.
 Timer: 75 ticks
-Thread: 39 idle ticks, 37 kernel ticks, 0 user ticks
+Thread: 38 idle ticks, 37 kernel ticks, 0 user ticks
 hd0:0: 0 reads, 0 writes
 hd0:1: 61 reads, 490 writes
 hd1:0: 226 reads, 0 writes
