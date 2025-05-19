@@ -26,6 +26,9 @@ void syscall_handler (struct intr_frame *);
 
 void
 syscall_init (void) {
+  // // 임시 추가
+  //  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
 			((uint64_t)SEL_KCSEG) << 32);
 	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
@@ -38,6 +41,7 @@ syscall_init (void) {
 }
 
 /* The main system call interface */
+// [*]2-K : 기본 함수에 시스템콜 넘버에 따른 분기 추가
 void
 syscall_handler (struct intr_frame *f UNUSED) {
   // TODO: Your implementation goes here.
@@ -47,7 +51,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
   switch (syscall_n)
   {
   case SYS_HALT:
-    halt();
+    halt(syscall_n);
     break;
   case SYS_EXIT:
     exit(f->R.rdi);
@@ -60,22 +64,37 @@ syscall_handler (struct intr_frame *f UNUSED) {
     break;
   }
   // printf ("system call!\n");
-  
 }
 
+// [*]2-K : 커널 halt는 프로그램 종료
+void halt(int status) {
+  power_off();
+}
+
+// [*]2-K : 커널 exit은 상태값을 받아서 출력 후 종료
 void exit(int status) {
   struct thread *cur = thread_current();
+  // 정상적으로 종료됐으면 status는 0을 받는다.
+  
   printf("%s: exit(%d)\n", cur->name, status);
   thread_exit();  // process_exit() → schedule() → _cleanup
 }
 
+// [*]2-K : 커널 write
 int write(int fd, const void *buffer, unsigned size) {
-  if (!is_user_vaddr(buffer) || buffer + size > (void*)PHYS_BASE)
+
+  // 1) 유저 영역에서 커널 영역 침범하지 않았는지 확인
+  if (!is_user_vaddr(buffer) ||
+      (const char *)buffer + size > (const char *) USER_STACK)
     exit(-1);
-  if (fd == STDOUT_FILENO) {
-    putbuf(buffer, size);
-    return size;
-  }
-  // fd > 1인 경우는 나중에 file_write(fdt[fd], buffer, size) 구현
+
+  // 2) STDOUT인 경우 콘솔에 출력
+  if (fd == 1)
+    {
+      putbuf(buffer, size);
+      return size;
+    }
+
+  // TODO: 그 외 fd는 추가 file_write() 구현 필요
   return -1;
 }
