@@ -294,10 +294,17 @@ run_actions(char **argv)
 		int i;
 
 		/* Find action name. */
-		for (a = actions;; a++)
+		for (a = actions; ; a++)
+		// null 체크
 			if (a->name == NULL)
-				PANIC("unknown action `%s' (use -h for help)", *argv);
-			else if (!strcmp(*argv, a->name))
+				PANIC ("unknown action `%s' (use -h for help)", *argv);
+
+			else if (!strcmp (*argv, a->name))
+				/*
+				action에 대응되는 실행 문자열이 들어온것인지 확인, 못찾으면 NULL까지 가서 패닉,
+				strcmp는 똑같으면 0반환, 그래서 같으면 !연산에의해 1이되고 조건 만족 탈출, 아니면 계속 순회
+				*/  
+
 				break;
 
 		/* Check for required arguments. */
@@ -306,7 +313,10 @@ run_actions(char **argv)
 				PANIC("action `%s' requires %d argument(s)", *argv, a->argc - 1);
 
 		/* Invoke action and advance. */
-		a->function(argv);
+		a->function (argv);
+		// 필수 인자만큼 건너뛰면서 명령어 실행
+		// 프로그램 실행에 추가적인 인자가 들어올 경우를 처리해줘야함
+
 		argv += a->argc;
 	}
 }

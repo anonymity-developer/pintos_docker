@@ -22,10 +22,17 @@
 #include "vm/vm.h"
 #endif
 
+=======
+#define ARGUMENT_LIMIT 64 // 명령행으로 받을 인자의 최댓값
+#define STACK_LIMIT (USER_STACK - PGSIZE)
+// commit test
+
 static void process_cleanup(void);
 static bool load(const char *file_name, struct intr_frame *if_);
 static void initd(void *f_name);
 static void __do_fork(void *);
+static bool push_stack_fr(struct intr_frame *if_);
+
 
 /* General process initializer for initd and other process. */
 static void
@@ -51,6 +58,10 @@ tid_t process_create_initd(const char *file_name)
 		return TID_ERROR;
 	strlcpy(fn_copy, file_name, PGSIZE);
 
+	char *save_ptr;
+
+	// file_name ="args-single onearg"
+	char* prog_name = strtok_r(file_name, " ", &save_ptr);
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -245,6 +256,7 @@ error:
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 // 현재 프로세스를 새로운 실행파일로 덮어쓰기 위한 함수
+// [*]2-O 문자열 파싱, 스택프레임 구성
 int process_exec(void *f_name)
 {
 	char *file_name = f_name;
@@ -258,8 +270,63 @@ int process_exec(void *f_name)
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+
 	/* We first kill the current context */
+	// 부모-자식 관계 상에서 자식 프로세스가 “새로운 실행 파일을 불러오기 전에” ,
+	// 기존 환경을 청소하는 작업.
 	process_cleanup();
+
+	/* [*]
+	for implement argument passing
+	before load,
+	스택 프레임에 프로그램 실행을 위한 정보들(인자 문자열, argv 배열, argc, fake return address 등)을
+	쌓아넣기 위해 받은 입력값을 파싱하는 작업을 이 위치에서 수행합니다.
+	
+	유저 애플리케이션은 인자 전달을 위해 %rdi, %rsi, %rdx, %rcx, %r8, %r9 순서로 정수 레지스터를 사용함.
+
+	
+	공백을 기준으로 문자열을 나눠서,
+	첫 번째 단어는 프로그램 이름
+	두번째 단어부터 첫번째 인자로 처리되도록 구현
+	*/
+	// 
+
+	int argc = 0;
+	char *argv[ARGUMENT_LIMIT];
+	char *token, *save_ptr;
+
+	// 현재 file_name = "args-single onearg" 
+
+	token = strtok_r(file_name, " ", &save_ptr);
+	// 모든 토큰을 처리
+	while (token != NULL && argc < ARGUMENT_LIMIT)
+	{
+		// 현재 토큰을 argv 배열에 저장
+		argv[argc] = token;
+		argc++;
+
+		// 다음 토큰 가져오기
+		token = strtok_r(NULL, " ", &save_ptr);
+	}
+
+	if (argc < ARGUMENT_LIMIT)
+	{
+		argv[argc] = NULL;
+	}
+
+	/* 
+	파싱 후
+	argc = 2
+
+	argv[0] = "args-single"
+	argv[1] = "onearg" 
+	argv[2] = NULL
+	*/
+
+	file_name = argv[0];
+	// 레지스터에 main함수에서 쓰이는 첫번째 인자와 두번째 인자 전달.
+	_if.R.rdi = argc;
+	_if.R.rsi = (uint64_t) argv; // 주소값을 정수로 전달할 때, uint64_t를 사용. 
 
 	/* And then load the binary */
 	success = load(file_name, &_if);
@@ -268,14 +335,27 @@ int process_exec(void *f_name)
 
 	// [*]2-B. !!! load_success 저장 후 sema_up()로 부모 깨워야함
 	// -> start_process()에서 sema_up(&thread_current()->load_sema); 함수가 없나??
+	push_stack_fr(&_if);
+	// 레지스터에 main함수에서 쓰이는 첫번째 인자와 두번째 인자 전달.
+	// 주소값을 정수로 전달할 때, uint64_t를 사용. 
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
 
 	/* If load failed, quit. */
 	palloc_free_page(file_name);
 	if (!success)
 		return -1;
 
+	// 여기부터 유저 영역
 	/* Start switched process. */
+
+	// 유저 영역에 들어가면서 시스템 콜을 호출할텐데,
+	// 커널에선 시스템 콜 번호와 인자를 확인한 후
+	// 그에 맞는 시스템 콜 핸들러 함수가 호출되고
+	// 그 핸들러가 요청을 적당히 처리하고(출력, 프로세스 관리 등) ㄱ결과를 사용자 프로그램에 반환한 뒤 사용자 모드로 복귀
+
+	// printf("before do_iret\n");
 	do_iret(&_if);
+	// do_iret가 호출된 이후로부턴 syscall.c에 구현된 syscall handler가 역할을 함.
 	NOT_REACHED();
 }
 
@@ -288,7 +368,8 @@ int process_exec(void *f_name)
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
-int process_wait(tid_t child_tid)
+
+int process_wait(tid_t child_tid) //UNUSED 지움
 {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
@@ -313,12 +394,16 @@ int process_wait(tid_t child_tid)
 	}
 
 	return -1; // 자식 리스트에서 해당 pid를 찾지 못했거나 조건 미충족 시 -1 반환
+// 	for (int i=0; i < 1000000000; i++){
+// 	}
+// 	return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void process_exit(void)
 {
 	struct thread *cur = thread_current(); // 현재 종료 중인 스레드
+
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
@@ -444,6 +529,11 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
  * Stores the executable's entry point into *RIP
  * and its initial stack pointer into *RSP.
  * Returns true if successful, false otherwise. */
+
+/*
+디스크의 실행 파일을 메모리에 올려서 CPU가 바로 실행할 수 있는 상태로 만드는 것
+가상 메모리, 페이지 테이블, 스택 세팅 등 실행 환경 전체를 준비하는 과정을 포함
+*/
 static bool
 load(const char *file_name, struct intr_frame *if_)
 {
@@ -455,6 +545,7 @@ load(const char *file_name, struct intr_frame *if_)
 	int i;
 
 	/* Allocate and activate page directory. */
+	// 가상주소공간 준비
 	t->pml4 = pml4_create();
 	if (t->pml4 == NULL)
 		goto done;
@@ -469,6 +560,7 @@ load(const char *file_name, struct intr_frame *if_)
 	}
 
 	/* Read and verify executable header. */
+	// 헤더 검증
 	if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
 		|| ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024)
 	{
@@ -539,10 +631,12 @@ load(const char *file_name, struct intr_frame *if_)
 		goto done;
 
 	/* Start address. */
+	// 프로그램 카운터
 	if_->rip = ehdr.e_entry;
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	//if_->
 
 	success = true;
 
@@ -594,6 +688,45 @@ validate_segment(const struct Phdr *phdr, struct file *file)
 		return false;
 
 	/* It's okay. */
+	return true;
+}
+
+// [*]2-O 스택 프레임 구성용 함수
+static bool push_stack_fr(struct intr_frame *if_){
+	char** argv = (char **) if_->R.rsi;
+	int argc = if_->R.rdi;
+	// 스택에 저장된 문자열의 주소를 저장 추후 프레임에 추가
+	char *addrs_argv[argc]; 
+
+
+	// argv 문자열 먼저 푸쉬
+	for (int i = argc-1; i >=0; i--){
+		size_t len = strlen(argv[i]) + 1; // 널 종단문자 포함
+		if_->rsp -= len;
+		if ((uint64_t)if_->rsp < STACK_LIMIT)
+			return false;
+		memcpy(if_->rsp, argv[i], len);
+		addrs_argv[i] = if_->rsp;
+	}
+
+	// 정렬용 패딩
+	if_->rsp = (uint64_t)if_->rsp & ~ 0x7;
+
+	// 문자열 시작주소 푸쉬
+	// 마지막 문자열 표시
+	if_->rsp -= sizeof(uintptr_t);
+	memset(if_->rsp, 0, sizeof(uintptr_t));
+
+	for (int i = argc -1; i>=0; i--){
+		if_->rsp -= sizeof(uintptr_t);
+		memcpy(if_->rsp, &addrs_argv[i], sizeof(uintptr_t));
+	}
+
+	if_->R.rsi = if_->rsp;
+	// 규약상 필요한 주소에 가짜주소 채워넣기
+	if_->rsp -= sizeof(uintptr_t);
+	memset(if_->rsp, 0, sizeof(uintptr_t));
+
 	return true;
 }
 
