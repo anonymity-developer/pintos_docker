@@ -61,13 +61,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
   switch (syscall_n)
   {
   case SYS_HALT:
-    halt(syscall_n);
+    sys_halt(syscall_n);
     break;
   case SYS_EXIT:
-    exit(f->R.rdi);
+    sys_exit(f->R.rdi);
     break;
   case SYS_WRITE:
-    f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+    f->R.rax = sys_write(f->R.rdi, f->R.rsi, f->R.rdx);
     break;
   default:
     thread_exit ();
@@ -77,12 +77,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 // [*]2-K : 커널 halt는 프로그램 종료
-void halt(int status) {
+void sys_halt(int status) {
   power_off();
 }
 
 // [*]2-K : 커널 exit은 상태값을 받아서 출력 후 종료
-void exit(int status) {
+void sys_exit(int status) {
   struct thread *cur = thread_current();
   // 정상적으로 종료됐으면 status는 0을 받는다.
   
@@ -91,12 +91,12 @@ void exit(int status) {
 }
 
 // [*]2-K : 커널 write
-int write(int fd, const void *buffer, unsigned size) {
+int sys_write(int fd, const void *buffer, unsigned size) {
 
   // 1) 유저 영역에서 커널 영역 침범하지 않았는지 확인
   if (!is_user_vaddr(buffer) ||
       (const char *)buffer + size > (const char *) USER_STACK)
-    exit(-1);
+    sys_exit(-1);
 
   // 2) STDOUT인 경우 콘솔에 출력
   if (fd == 1)
