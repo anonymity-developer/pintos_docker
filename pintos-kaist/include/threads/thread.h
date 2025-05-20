@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h" // [*]2-B. include 추가
 #include "threads/interrupt.h"
 #ifdef VM
 #include "vm/vm.h"
@@ -116,13 +117,18 @@ struct thread
 	struct list donations;	   //[*]1-2-3. 중요도 양도한 애 리스트
 	struct list_elem d_elem;   //[*]1-2-3. 중요도 양도한 애 관리(prev, next)
 
-	// [*]2. 부모-자식 프로세스 관리용
+	// [*]2-B. wait()
 	struct list child_list;				// 자식 프로세스 정보 리스트
 	struct child_info *self_child_info; // 나 자신의 child_info (부모가 접근함)
 	struct thread *parent;				// 나를 만든 부모 스레드
+	int exit_status;					// exit(int status)에서 설정, 부모가 wait()에서 자식의 종료 코드를 수거할 수 있게 해주는 변수
+
+	// [*]2-B. exec()
+	struct semaphore load_sema; // 	exec 로딩 동기화용 세마포어 : process_execute()와 연동
+	bool load_success;			// 로드 성공여부 : 부모가 판단
 };
 
-// [*]2. 부모-자식 프로세스 관리용
+// [*]2-B. 부모-자식 프로세스 관리용
 struct child_info
 {
 	tid_t tid;					// 자식의 tid
