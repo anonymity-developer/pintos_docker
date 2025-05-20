@@ -22,7 +22,6 @@
 #include "vm/vm.h"
 #endif
 
-=======
 #define ARGUMENT_LIMIT 64 // 명령행으로 받을 인자의 최댓값
 #define STACK_LIMIT (USER_STACK - PGSIZE)
 // commit test
@@ -32,7 +31,6 @@ static bool load(const char *file_name, struct intr_frame *if_);
 static void initd(void *f_name);
 static void __do_fork(void *);
 static bool push_stack_fr(struct intr_frame *if_);
-
 
 /* General process initializer for initd and other process. */
 static void
@@ -61,7 +59,7 @@ tid_t process_create_initd(const char *file_name)
 	char *save_ptr;
 
 	// file_name ="args-single onearg"
-	char* prog_name = strtok_r(file_name, " ", &save_ptr);
+	char *prog_name = strtok_r(file_name, " ", &save_ptr);
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -270,7 +268,6 @@ int process_exec(void *f_name)
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
-
 	/* We first kill the current context */
 	// 부모-자식 관계 상에서 자식 프로세스가 “새로운 실행 파일을 불러오기 전에” ,
 	// 기존 환경을 청소하는 작업.
@@ -281,21 +278,21 @@ int process_exec(void *f_name)
 	before load,
 	스택 프레임에 프로그램 실행을 위한 정보들(인자 문자열, argv 배열, argc, fake return address 등)을
 	쌓아넣기 위해 받은 입력값을 파싱하는 작업을 이 위치에서 수행합니다.
-	
+
 	유저 애플리케이션은 인자 전달을 위해 %rdi, %rsi, %rdx, %rcx, %r8, %r9 순서로 정수 레지스터를 사용함.
 
-	
+
 	공백을 기준으로 문자열을 나눠서,
 	첫 번째 단어는 프로그램 이름
 	두번째 단어부터 첫번째 인자로 처리되도록 구현
 	*/
-	// 
+	//
 
 	int argc = 0;
 	char *argv[ARGUMENT_LIMIT];
 	char *token, *save_ptr;
 
-	// 현재 file_name = "args-single onearg" 
+	// 현재 file_name = "args-single onearg"
 
 	token = strtok_r(file_name, " ", &save_ptr);
 	// 모든 토큰을 처리
@@ -314,19 +311,19 @@ int process_exec(void *f_name)
 		argv[argc] = NULL;
 	}
 
-	/* 
+	/*
 	파싱 후
 	argc = 2
 
 	argv[0] = "args-single"
-	argv[1] = "onearg" 
+	argv[1] = "onearg"
 	argv[2] = NULL
 	*/
 
 	file_name = argv[0];
 	// 레지스터에 main함수에서 쓰이는 첫번째 인자와 두번째 인자 전달.
 	_if.R.rdi = argc;
-	_if.R.rsi = (uint64_t) argv; // 주소값을 정수로 전달할 때, uint64_t를 사용. 
+	_if.R.rsi = (uint64_t)argv; // 주소값을 정수로 전달할 때, uint64_t를 사용.
 
 	/* And then load the binary */
 	success = load(file_name, &_if);
@@ -337,7 +334,7 @@ int process_exec(void *f_name)
 	// -> start_process()에서 sema_up(&thread_current()->load_sema); 함수가 없나??
 	push_stack_fr(&_if);
 	// 레지스터에 main함수에서 쓰이는 첫번째 인자와 두번째 인자 전달.
-	// 주소값을 정수로 전달할 때, uint64_t를 사용. 
+	// 주소값을 정수로 전달할 때, uint64_t를 사용.
 	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
 
 	/* If load failed, quit. */
@@ -369,34 +366,35 @@ int process_exec(void *f_name)
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 
-int process_wait(tid_t child_tid) //UNUSED 지움
+int process_wait(tid_t child_tid) // UNUSED 지움
 {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 
 	// [*]2-B. 대기
-	struct thread *cur = thread_current();
-	struct list_elem *e;
-	for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) // 자식 리스트를 순회
-	{
-		struct child_info *child = list_entry(e, struct child_info, elem); // 리스트에서 child_info 구조체 추출
-		if (child->tid != child_tid)									   // child_tid가 일치하는 자식만 wait
-			continue;
-		if (child->waited) // 이미 wait() 호출된 자식이라면 중복 호출 → -1 반환
-			return -1;
-		child->waited = true;			 // 처음 wait() 호출하는 경우 → waited = true 표시
-		sema_down(&child->wait_sema);	 // 자식이 종료될 때까지 대기 (sema_down)
-		int status = child->exit_status; // 자식이 종료된 후 exit_status를 받아옴
-		list_remove(e);					 // 자식 정보를 리스트에서 제거하고
-		palloc_free_page(child);		 // 메모리 해제
-		return status;					 // 자식 종료 상태를 반환
-	}
+	// struct thread *cur = thread_current();
+	// struct list_elem *e;
+	// for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) // 자식 리스트를 순회
+	// {
+	// 	struct child_info *child = list_entry(e, struct child_info, elem); // 리스트에서 child_info 구조체 추출
+	// 	if (child->tid != child_tid)									   // child_tid가 일치하는 자식만 wait
+	// 		continue;
+	// 	if (child->waited) // 이미 wait() 호출된 자식이라면 중복 호출 → -1 반환
+	// 		return -1;
+	// 	child->waited = true;			 // 처음 wait() 호출하는 경우 → waited = true 표시
+	// 	sema_down(&child->wait_sema);	 // 자식이 종료될 때까지 대기 (sema_down)
+	// 	int status = child->exit_status; // 자식이 종료된 후 exit_status를 받아옴
+	// 	list_remove(e);					 // 자식 정보를 리스트에서 제거하고
+	// 	palloc_free_page(child);		 // 메모리 해제
+	// 	return status;					 // 자식 종료 상태를 반환
+	// }
+	// return -1;
 
-	return -1; // 자식 리스트에서 해당 pid를 찾지 못했거나 조건 미충족 시 -1 반환
-// 	for (int i=0; i < 1000000000; i++){
-// 	}
-// 	return -1;
+	// 자식 리스트에서 해당 pid를 찾지 못했거나 조건 미충족 시 -1 반환
+	for (int i = 0; i < 1000000000; i++){
+	}
+	return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -636,7 +634,7 @@ load(const char *file_name, struct intr_frame *if_)
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-	//if_->
+	// if_->
 
 	success = true;
 
@@ -692,15 +690,16 @@ validate_segment(const struct Phdr *phdr, struct file *file)
 }
 
 // [*]2-O 스택 프레임 구성용 함수
-static bool push_stack_fr(struct intr_frame *if_){
-	char** argv = (char **) if_->R.rsi;
+static bool push_stack_fr(struct intr_frame *if_)
+{
+	char **argv = (char **)if_->R.rsi;
 	int argc = if_->R.rdi;
 	// 스택에 저장된 문자열의 주소를 저장 추후 프레임에 추가
-	char *addrs_argv[argc]; 
-
+	char *addrs_argv[argc];
 
 	// argv 문자열 먼저 푸쉬
-	for (int i = argc-1; i >=0; i--){
+	for (int i = argc - 1; i >= 0; i--)
+	{
 		size_t len = strlen(argv[i]) + 1; // 널 종단문자 포함
 		if_->rsp -= len;
 		if ((uint64_t)if_->rsp < STACK_LIMIT)
@@ -710,14 +709,15 @@ static bool push_stack_fr(struct intr_frame *if_){
 	}
 
 	// 정렬용 패딩
-	if_->rsp = (uint64_t)if_->rsp & ~ 0x7;
+	if_->rsp = (uint64_t)if_->rsp & ~0x7;
 
 	// 문자열 시작주소 푸쉬
 	// 마지막 문자열 표시
 	if_->rsp -= sizeof(uintptr_t);
 	memset(if_->rsp, 0, sizeof(uintptr_t));
 
-	for (int i = argc -1; i>=0; i--){
+	for (int i = argc - 1; i >= 0; i--)
+	{
 		if_->rsp -= sizeof(uintptr_t);
 		memcpy(if_->rsp, &addrs_argv[i], sizeof(uintptr_t));
 	}
