@@ -1,6 +1,6 @@
 ## #️⃣ Issue Number
 
-- # 
+close # 
 
 ## 📝 요약(Summary)
 
