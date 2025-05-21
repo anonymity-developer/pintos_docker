@@ -108,3 +108,7 @@ int sys_write(int fd, const void *buffer, unsigned size) {
   // TODO: 그 외 fd는 추가 file_write() 구현 필요
   return -1;
 }
+
+pid_t fork(const char *thread_name){
+  
+}
