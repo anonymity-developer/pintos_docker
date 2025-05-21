@@ -10,6 +10,11 @@
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
+void sys_halt (void);
+void sys_exit (int status);
+int sys_write(int fd, const void *buffer, unsigned size);
+int sys_exec (const char *cmd_line);
+void check_address(void *addr);
 
 /*
 이 파일에서 프로세스 생성과 실행을 관리한다
@@ -61,13 +66,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
   switch (syscall_n)
   {
   case SYS_HALT:
-    sys_halt(syscall_n);
+    sys_halt();
     break;
   case SYS_EXIT:
     sys_exit(f->R.rdi);
     break;
   case SYS_WRITE:
     f->R.rax = sys_write(f->R.rdi, f->R.rsi, f->R.rdx);
+    break;
+  case SYS_EXEC:
+    if (sys_exec(f->R.rdi) == -1) {
+      sys_exit(-1);
+      }
     break;
   default:
     thread_exit ();
@@ -77,7 +87,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 // [*]2-K : 커널 halt는 프로그램 종료
-void sys_halt(int status) {
+void sys_halt(void) {
   power_off();
 }
 
@@ -85,20 +95,17 @@ void sys_halt(int status) {
 void sys_exit(int status) {
   struct thread *cur = thread_current();
   // 정상적으로 종료됐으면 status는 0을 받는다.
-  
+
   printf("%s: exit(%d)\n", cur->name, status);
   thread_exit();  // process_exit() → schedule() → _cleanup
 }
 
-// [*]2-K : 커널 write
+// [*]2-K : 커널 sys_write
 int sys_write(int fd, const void *buffer, unsigned size) {
 
-  // 1) 유저 영역에서 커널 영역 침범하지 않았는지 확인
-  if (!is_user_vaddr(buffer) ||
-      (const char *)buffer + size > (const char *) USER_STACK)
-    sys_exit(-1);
+  check_address(buffer);
 
-  // 2) STDOUT인 경우 콘솔에 출력
+  // STDOUT인 경우 콘솔에 출력
   if (fd == 1)
     {
       putbuf(buffer, size);
@@ -111,4 +118,34 @@ int sys_write(int fd, const void *buffer, unsigned size) {
 
 pid_t fork(const char *thread_name){
   
+}
+// [*]2-K 커널 exec
+int sys_exec(const char *cmd_line) {
+
+    // 1) 유저 영역에서 커널 영역 침범하지 않았는지 확인
+  check_address(cmd_line);
+
+  int pid = process_exec((void*)cmd_line);
+  if (pid < 0)
+      return -1;
+
+// - 명령줄 인수도 자식 프로세스에 전달합니다.  
+// - 성공하면 새로 생성된 자식 프로세스의 PID를 반환합니다.  
+// - 프로그램 로드나 스레드 생성에 실패하면 `-1`을 반환합니다.  
+// - 이 `exec()`를 호출한 부모 프로세스는, 자식 프로세스가 완전히 생성되고 실행 파일을 모두 로드할 때까지 기다려야 합니다.  
+  
+  // 성공한 경우, 새 자식 PID를 반환
+  return pid;
+  // NOT_REACHED();
+  // return 0;
+}
+
+// [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
+void check_address(void *addr) {
+    struct thread *t = thread_current();
+
+    if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL)
+    {
+        sys_exit(-1);
+    }
 }
