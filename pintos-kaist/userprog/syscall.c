@@ -7,6 +7,8 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/palloc.h"
+#include <string.h>
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
@@ -119,22 +121,26 @@ int sys_write(int fd, const void *buffer, unsigned size) {
 // [*]2-K 커널 exec
 int sys_exec(const char *cmd_line) {
 
-    // 1) 유저 영역에서 커널 영역 침범하지 않았는지 확인
+  // 1) 유저 영역에서 커널 영역 침범하지 않았는지 확인
   check_address(cmd_line);
 
-  int pid = process_exec((void*)cmd_line);
-  if (pid < 0)
-      return -1;
-
-// - 명령줄 인수도 자식 프로세스에 전달합니다.  
-// - 성공하면 새로 생성된 자식 프로세스의 PID를 반환합니다.  
-// - 프로그램 로드나 스레드 생성에 실패하면 `-1`을 반환합니다.  
-// - 이 `exec()`를 호출한 부모 프로세스는, 자식 프로세스가 완전히 생성되고 실행 파일을 모두 로드할 때까지 기다려야 합니다.  
+  // 2) 커널 영역에 명령어 복사를 위한 공간 확보
+  int cmd_line_size = strlen(cmd_line) + 1;
+  char *cm_copy = palloc_get_page(PAL_ZERO);  // 커널 메모리 확보
+  if (cm_copy == NULL)
+  {
+    sys_exit(-1);
+  }
+  strlcpy(cm_copy, cmd_line, cmd_line_size);  // 안전하게 복사해둠
   
-  // 성공한 경우, 새 자식 PID를 반환
-  return pid;
-  // NOT_REACHED();
-  // return 0;
+  // file 실행이 실패했다면 -1을 리턴한다.
+  if (process_exec(cm_copy) == -1)
+  {
+      return -1;
+  }
+  // 정상적으로 process_exec 실행되면 아래 부분은 실행되지 않음.
+  NOT_REACHED();
+  return 0;
 }
 
 // [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
