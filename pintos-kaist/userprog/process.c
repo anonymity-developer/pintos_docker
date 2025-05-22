@@ -82,43 +82,12 @@ initd(void *f_name)
 	NOT_REACHED();
 }
 
-// [*]2-B. fork 시 관리 위한 구조체
-struct fork_args
-{
-	struct thread *parent;	// 자식이 자신의 부모를 알 수 있게
-	struct intr_frame *if_; // 부모의 레지스터 상태를 복제할 수 있게
-	struct child_info *ci;	// 자식이 자기 child_info를 알 수 있게
-};
-
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 // [*]2-B. fork 구현
 tid_t process_fork(const char *name, struct intr_frame *if_)
 {
-	/* Clone current thread to new thread.*/
-	// return thread_create (name,
-	// 		PRI_DEFAULT, __do_fork, thread_current ());
-
-	// 1. 부모가 자식의 종료 상태를 수거할 구조체를 만듦
-	struct child_info *ci = palloc_get_page(sizeof(struct child_info));
-	if (ci == NULL)
-		return TID_ERROR;
-
-	ci->waited = false;
-	ci->exit_status = -1;
-	sema_init(&ci->wait_sema, 0);
-
-	// 2. 자식에게 넘겨줄 인자 패키지를 구성
-	struct fork_args *args = palloc_get_page(sizeof(struct fork_args));
-	if (args == NULL)
-	{
-		palloc_free_page(ci);
-		return TID_ERROR;
-	}
-	args->parent = thread_current();
-	printf("부모 흐름에서 체크 args->parent: %p\n", args->parent);
-	args->if_ = &(thread_current()->tf);
-	args->ci = ci;
+	memcpy(if_, &thread_current()->tf, sizeof(struct intr_frame));
 
 	// 3. 자식 스레드를 생성, aux 인자로 args를 넘김
 	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, args);
@@ -377,10 +346,7 @@ int process_exec(void *f_name)
 	/* And then load the binary */
 	success = load(file_name, &_if);
 
-	thread_current()->load_success = success; //[*]2-B. exec 성공 여부 부모에게 전달
 
-	// [*]2-B. !!! load_success 저장 후 sema_up()로 부모 깨워야함
-	// -> start_process()에서 sema_up(&thread_current()->load_sema); 함수가 없나??
 	push_stack_fr(&_if);
 	// 레지스터에 main함수에서 쓰이는 첫번째 인자와 두번째 인자 전달.
 	// 주소값을 정수로 전달할 때, uint64_t를 사용.
@@ -421,29 +387,40 @@ int process_wait(tid_t child_tid) // UNUSED 지움
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 
-	// [*]2-B. 대기
-	// struct thread *cur = thread_current();
-	// struct list_elem *e;
-	// for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) // 자식 리스트를 순회
-	// {
-	// 	struct child_info *child = list_entry(e, struct child_info, elem); // 리스트에서 child_info 구조체 추출
-	// 	if (child->tid != child_tid)									   // child_tid가 일치하는 자식만 wait
-	// 		continue;
-	// 	if (child->waited) // 이미 wait() 호출된 자식이라면 중복 호출 → -1 반환
-	// 		return -1;
-	// 	child->waited = true;			 // 처음 wait() 호출하는 경우 → waited = true 표시
-	// 	sema_down(&child->wait_sema);	 // 자식이 종료될 때까지 대기 (sema_down)
-	// 	int status = child->exit_status; // 자식이 종료된 후 exit_status를 받아옴
-	// 	list_remove(e);					 // 자식 정보를 리스트에서 제거하고
-	// 	palloc_free_page(child);		 // 메모리 해제
-	// 	return status;					 // 자식 종료 상태를 반환
+	
+	struct thread *cur = thread_current();
+	struct thread *real_child = NULL;
+	struct list_elem *e;
+
+	for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) // 자식 리스트를 순회
+	{
+		struct thread *child = list_entry(e, struct thread, child_elem);
+		
+		if (child->tid != child_tid){
+		// child_tid가 일치하는 자식만wait								   
+			continue;
+		}
+		else {
+			real_child = child;
+			break;
+		}
+	}
+
+	if (real_child == NULL){
+		return -1;
+	}
+
+	sema_down(&real_child->exit_sema);	 // 자식이 종료될 때까지 대기 (sema_down)
+	int status = real_child->exit_status; // 자식이 종료된 후 exit_status를 받아옴
+
+	list_remove(&real_child->child_elem);
+	sema_up(&real_child->free_sema);
+	return status;
+	
+	// // 자식 리스트에서 해당 pid를 찾지 못했거나 조건 미충족 시 -1 반환
+	// for (int i = 0; i < 1000000000; i++){
 	// }
 	// return -1;
-
-	// 자식 리스트에서 해당 pid를 찾지 못했거나 조건 미충족 시 -1 반환
-	for (int i = 0; i < 1000000000; i++){
-	}
-	return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -456,12 +433,8 @@ void process_exit(void)
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	// [*]2-B. 종료
-	if (cur->self_child_info != NULL) // 자식이면서, 부모가 나를 wait()할 수 있게 등록해둔 상태인 경우
-	{
-		cur->self_child_info->exit_status = cur->exit_status; // 내 종료 상태를 부모에게 전달
-		sema_up(&cur->self_child_info->wait_sema);			  // 부모가 sema_down()으로 기다리고 있었으므로 깨워줌
-	}
+	sema_up(&cur->exit_sema);
+	sema_down(&cur->free_sema);
 	process_cleanup(); // 그 외 자원 정리 (page table, 파일 디스크립터 등)
 
 	// // [*]2-B. !!!
@@ -596,9 +569,8 @@ load(const char *file_name, struct intr_frame *if_)
 	t->pml4 = pml4_create();
 	if (t->pml4 == NULL)
 		goto done;
-	printf("부모 pml4 초기화: %p\n", t->pml4);
 
-	printf("load에서 부모 스레드 주소: %p\n", t);
+
 	// 페이지 테이블 활성화
 	process_activate(thread_current());
 

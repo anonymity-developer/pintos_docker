@@ -216,10 +216,11 @@ tid_t thread_create(const char *name, int priority,
 	/* Initialize thread. */
 	init_thread(t, name, priority); // 스레드 기본 정보 초기화
 	tid = t->tid = allocate_tid();	// 스레드 ID 할당 및 저장
-	// [*]2-o 스레드 만들어주면서 자신이 직접 추가.
+	// [*]2-o 스레드 만들어주면서 자신을 부모필드에 직접 추가.
 	t->parent = thread_current();
-	// [*]2-o 정상종료가 될경우 값이 바뀌도록 스레드 생성시는 비정상 종료상태로
-	t->exit_status = -1;
+	// [*]2-o 부모의 child list에 생성되는 스레드 t의 elem 넣기.
+	list_push_back(&t->parent->child_list,&t->child_elem);
+
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t)kernel_thread; // 실행될 함수 주소 설정
@@ -470,10 +471,14 @@ init_thread(struct thread *t, const char *name, int priority)
 
 	// [*]2-B. 구조체 수정한거 초기화
 	list_init(&t->child_list);
-	//t->self_child_info = NULL;
+	sema_init(&t->exit_sema, 0);
+	sema_init(&t->free_sema, 0);
+
+	// [*]2-o 정상종료가 될경우 값이 바뀌도록 스레드 생성시는 비정상 종료상태로
+	t->exit_status = -1;
+
 	t->parent = NULL;
-	sema_init(&t->load_sema, 0);
-	t->load_success = false;
+	
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

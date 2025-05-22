@@ -85,6 +85,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
     break;
   case SYS_FORK:
     f->R.rax = sys_fork(f->R.rdi);
+    break;
   case SYS_OPEN:
     f->R.rax = open(f->R.rdi);
     break;

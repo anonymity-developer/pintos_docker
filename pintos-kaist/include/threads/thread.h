@@ -131,10 +131,11 @@ struct thread
 
 	// [*]2-B,O 자식의 종료신호를 기다리는 필드
 	struct list child_list;				// 자식 프로세스 정보 리스트
+	struct list_elem child_elem;
 	struct thread *parent;				// 나를 만든 부모 스레드
 	int exit_status;					// exit(int status)에서 설정, 부모가 wait()에서 자식의 종료 코드를 수거할 수 있게 해주는 변수
 	// 자식의 종료상태를 기다리는 세마포어
-	struct semaphore exit_seam;
+	struct semaphore exit_sema;
 	// 자식의 메모리 수거 상태를 기다리는 세마포어
 	struct semaphore free_sema;
 };
