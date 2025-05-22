@@ -120,7 +120,7 @@ tid_t process_fork(const char *name, struct intr_frame *if_)
 	args->ci = ci;
 
 	// 3. 자식 스레드를 생성, aux 인자로 args를 넘김
-	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, args->parent);
+	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, args);
 	if (tid == TID_ERROR)
 	{
 		palloc_free_page(ci);
@@ -138,9 +138,12 @@ tid_t process_fork(const char *name, struct intr_frame *if_)
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
+// [*]2-O
 static bool
 duplicate_pte(uint64_t *pte, void *va, void *aux)
 {
+	// va = 작업 대상인 가상주소
+	// *pte = 그 가상주소가 매핑된 물리 페이지 번호 + 쓰기 허용 여부를 나타내는 플래그
 	struct thread *current = thread_current();
 	struct thread *parent = (struct thread *)aux;
 	void *parent_page;
@@ -148,21 +151,34 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-	// 커널 페이지인지 검사
+	// 커널 페이지인지 검사	
+	if (!is_user_vaddr(va)){
+		// [*]2-O 커널 페이지는 자식에게 복사할 필요 없으니 그냥 성공으로 처리하고 다음 엔트리 검사.
+		return true;
+	}
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	// 부모의 VA로부터 실제 물리 페이지 가져오기
+	// [*]2-O
 	parent_page = pml4_get_page(parent->pml4, va);
+	if (parent_page == NULL)
+  		return false;
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
 	// 자식용 새 페이지 할당
+	// [*]2-o, 이 단계에서 부모와 자식은 다른 물리메모리를 가짐.
+	newpage = palloc_get_page(PAL_USER);
+	if (newpage == NULL)
+        return false;
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
 	// 부모 → 자식 페이지 복사
 	// writable 여부 판단
+	memcpy(newpage,parent_page,PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
@@ -172,6 +188,8 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 	{
 		/* 6. TODO: if fail to insert page, do error handling. */
 		// 실패 시 palloc_free_page() 하고 false 리턴
+		palloc_free_page(newpage);
+		return false;
 	}
 	return true;
 }
@@ -181,24 +199,21 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
  * Hint) parent->tf does not hold the userland context of the process.
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
-// 부모 프로세스의 실행 컨텍스트(CPU 상태)를 복사하는 자식 스레드의 시작점 함수
-// parent->tf는 유저 영역의 정확한 레지스터 상태를 가지고 있지 않으므로,
-// process_fork()에서 받은 intr_frame 복사본을 두 번째 인자로 받아서 사용해야 한다.
+/*[*]2-o 복사해야할 것은 총 3개
+1. 부모의 실행 흐름을 이어가기 위한 callee-saved reg
+2. 부모프로세스가 갖고있는 가상메모리 구조
+2-1. 단, 실제 물리메모리 영역이 겹치면 안됨
+3. 부모가 오픈한 파일 디스크립터 목록
+*/ 
 static void
 __do_fork(void *aux)
 {
-	// struct intr_frame if_;
-	// struct thread *parent = (struct thread *)aux;
-	// struct thread *current = thread_current();
-	// /* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	// // fork 시 복제할 부모의 레지스터 상태가 필요
-	// struct intr_frame *parent_if;
+	// [*]2-o. 각 작업 마다 성공여부 기록, 모든 복사작업 중 하나라도 실패하면 복제 실패로 간주해야함.
 	bool succ = true;
+	
 
 	// /* 1. Read the cpu context to local stack. */
-	// // 부모로부터 받은 유저 실행 상태(struct intr_frame)를 자식의 지역 변수에 복사한다.
-	// // 이게 있어야 나중에 do_iret(&if_)로 유저 모드에 진입 가능.
-	// memcpy(&if_, parent_if, sizeof(struct intr_frame));
+	// [*]2-o 1. 부모의 실행 흐름을 이어가기 위한 callee-saved reg
 
 	// [*]2-B. 자식 쪽 (__do_fork()) 코드도 맞춰주기
 	// [*]2-B. 자식은 aux로 넘긴 struct fork_args *를 받아서 self_child_info, parent를 설정
@@ -207,16 +222,16 @@ __do_fork(void *aux)
 	current->parent = args->parent; // 부모-자식 연결
 	current->self_child_info = args->ci;
 	struct intr_frame *parent_if = args->if_; // 레지스터 상태 복사
-	struct intr_frame if_;
+	struct intr_frame if_ = current->tf;
 	memcpy(&if_, parent_if, sizeof(struct intr_frame));
 	// void *memcpy(void *dest, const void *src, size_t n)
 	// src 주소로부터 n바이트를 읽어서 dest 주소로 복사한다.
 	palloc_free_page(args); // 더 이상 필요 없는 인자는 해제
 
 	/* 2. Duplicate PT */
-	// 부모의 페이지 테이블을 자식에게 복사하는 과정.
-	// VM이 활성화되어 있다면 supplemental page table(SPT)를 복사하고,
-	// 아니라면 pml4_for_each()로 PTE를 복제함
+
+	// 2. 부모프로세스가 갖고있는 가상메모리 구조
+	// 2-1. 단, 실제 물리메모리 영역이 겹치면 안됨
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
@@ -232,16 +247,41 @@ __do_fork(void *aux)
 		goto error;
 #endif
 
+
+ 	/*3. 부모가 오픈한 파일 디스크립터 목록*/
+	
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 	// 힌트: 부모의 열려있는 파일들을 복제할 때는 file_duplicate()를 사용하라.
-	// 중요한 점은, 부모는 자식이 모든 자원 복제에 성공했을 때에만 fork()에서 리턴해야 한다.
-	// (즉, 자식이 준비되기도 전에 부모가 진행되면 안 된다.)
 
+	
+
+	for (int i = 0; i < OPEN_LIMIT; i++){
+		struct file *parent_file = current->parent->fd_table[i];
+		if (parent_file != NULL){
+			struct file *child_file = file_duplicate(parent_file);
+			if (child_file == NULL){
+				// 부모의 파일 중 하나라도 복제 실패하면 프로세스 복제 실패로 간주,
+				succ = false;
+				printf("out of memory during file_duplicate at %d\n", i);
+				goto error;
+			}
+			current->fd_table[i] = child_file;
+		}
+		else{
+			current->fd_table[i] = NULL;
+		}
+	}
+	current->next_fd = parent->next_fd;
+
+	// 자식이 준비되기도 전에 부모가 진행되면 안 된다. 부모가 wait하라는건가?
+	
 	process_init();
+
+		// 중요한 점은, 부모는 자식이 모든 자원 복제에 성공했을 때에만 fork()에서 리턴해야 한다. 하나라도 삐끗하면 succ=flase 처리 해야함.
 
 	/* Finally, switch to the newly created process. */
 	// 자식 프로세스의 준비가 끝났다면, 실제 유저모드로 진입 (do_iret) 시도한다.

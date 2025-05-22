@@ -79,6 +79,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
       sys_exit(-1);
       }
     break;
+  case SYS_FORK:
+    sys_fork()
   default:
     thread_exit ();
     break;
@@ -116,8 +118,8 @@ int sys_write(int fd, const void *buffer, unsigned size) {
   return -1;
 }
 
-pid_t fork(const char *thread_name){
-  
+pid_t sys_fork(const char *thread_name){
+  process_fork(thread_name, )
 }
 // [*]2-K 커널 exec
 int sys_exec(const char *cmd_line) {
