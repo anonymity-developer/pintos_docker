@@ -16,7 +16,9 @@ void sys_halt (void);
 void sys_exit (int status);
 int sys_write(int fd, const void *buffer, unsigned size);
 int sys_exec (const char *cmd_line);
+int sys_open(const char *file);
 void check_address(void *addr);
+static struct file *find_file_by_fd(int fd);
 
 /*
 이 파일에서 프로세스 생성과 실행을 관리한다
@@ -43,9 +45,6 @@ void check_address(void *addr);
 
 void
 syscall_init (void) {
-  // // 임시 추가
-  //  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
 			((uint64_t)SEL_KCSEG) << 32);
 	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
@@ -55,6 +54,7 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			  FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+  lock_init(&filesys_lock); // [*]2-K: 락 초기화
 }
 
 /* The main system call interface */
@@ -80,6 +80,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
     if (sys_exec(f->R.rdi) == -1) {
       sys_exit(-1);
       }
+    break;
+  case SYS_OPEN:
+    f->R.rax = open(f->R.rdi);
     break;
   default:
     thread_exit ();
@@ -143,6 +146,31 @@ int sys_exec(const char *cmd_line) {
   return 0;
 }
 
+// [*]2-K 커널 open
+int open(const char *file)
+{
+  check_address(file);
+  lock_acquire(&filesys_lock);
+  struct file *open_file = filesys_open(file);
+
+  if (open_file == NULL)
+  {
+      return -1;
+  }
+  // fd table에 file추가
+  int fd = add_file_to_fdt(open_file);
+
+  // fd table 가득 찼을경우
+  // if (fd == -1)
+  // {
+  //     file_close(open_file);
+  // }
+  lock_release(&filesys_lock);
+  return fd;
+}
+
+
+
 // [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
 void check_address(void *addr) {
     struct thread *t = thread_current();
@@ -151,4 +179,38 @@ void check_address(void *addr) {
     {
         sys_exit(-1);
     }
+}
+
+// [*]2-K: 파일을 현재 프로세스의 fdt에 추가
+int
+add_file_to_fdt (struct file *file)
+{
+  struct thread *cur = thread_current ();
+  struct file **fdt = cur->fd_table;     /* fd_table 포인터 가져오기 */
+  int start = cur->next_fd;
+  int fd = start;                         /* fd를 start로 초기화 */
+
+  /* 1) OPEN_LIMIT 범위 안에서 비어 있는 슬롯을 찾는다. */
+  while (fd < OPEN_LIMIT && fdt[fd] != NULL)
+    fd++;
+
+  /* 2) 빈 슬롯이 없으면 -1 리턴 */
+  if (fd >= OPEN_LIMIT)
+    return -1;
+
+  /* 3) 빈 슬롯에 파일 저장, next_fd 갱신, fd 반환 */
+  fdt[fd] = file;
+  cur->next_fd = fd + 1;
+  return fd;
+}
+
+// [*]2-K: fd 값을 넣으면 해당 file을 반환하는 함수
+static struct file *find_file_by_fd(int fd)
+{
+    struct thread *cur = thread_current();
+    if (fd < 0 || fd >= OPEN_LIMIT)
+    {
+        return NULL;
+    }
+    return cur->fd_table[fd];
 }
