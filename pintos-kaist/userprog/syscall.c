@@ -18,6 +18,12 @@ int sys_write(int fd, const void *buffer, unsigned size);
 int sys_exec (const char *cmd_line);
 int sys_open(const char *file);
 void sys_close(int fd);
+bool sys_create (const char *file, unsigned initial_size);
+bool sys_remove (const char *file);
+int sys_filesize (int fd);
+int sys_read (int fd, void *buffer, unsigned size);
+void sys_seek (int fd, unsigned position);
+unsigned sys_tell (int fd);
 void check_address(void *addr);
 static struct file *find_file_by_fd(int fd);
 
@@ -98,12 +104,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 // [*]2-K : 커널 halt는 프로그램 종료
-void sys_halt(void) {
+void 
+sys_halt(void) {
   power_off();
 }
 
 // [*]2-K : 커널 exit은 상태값을 받아서 출력 후 종료
-void sys_exit(int status) {
+void 
+sys_exit(int status) {
   struct thread *cur = thread_current();
 
   // 정상적으로 종료됐으면 status는 0을 받는다.
@@ -112,28 +120,39 @@ void sys_exit(int status) {
 }
 
 // [*]2-K : 커널 write
-int sys_write(int fd, const void *buffer, unsigned size) {
+int
+sys_write(int fd, const void *buffer, unsigned size) {
 
   check_address(buffer);
-
-  // STDOUT인 경우 콘솔에 출력
+  struct file *cur_file = find_file_by_fd(fd);
+  // 파일이 없다면 -1
+  if (cur_file == NULL)
+    return -1;
+  // 표준출력인 경우 콘솔에 출력
   if (fd == 1)
     {
       putbuf(buffer, size);
       return size;
     }
-
-  // TODO: 그 외 fd는 추가 file_write() 구현 필요
-  return -1;
+  // 표준입력인 경우 리턴 -1
+  else if (fd == 0) {
+      return -1;
+  }
+  else {
+    lock_acquire(&filesys_lock);
+    int bytes_written = file_write(cur_file, buffer, size);
+    lock_release(&filesys_lock);
+    return (int)bytes_written;
+  }
 }
 
 // [*]2-K 커널 exec
-int sys_exec(const char *cmd_line) {
-
-  // 1) 유저 영역에서 커널 영역 침범하지 않았는지 확인
+int
+sys_exec(const char *cmd_line) {
+  // 유저 영역에서 커널 영역 침범하지 않았는지 확인
   check_address(cmd_line);
 
-  // 2) 커널 영역에 명령어 복사를 위한 공간 확보
+  // 커널 영역에 명령어 복사를 위한 공간 확보
   int cmd_line_size = strlen(cmd_line) + 1;
   char *cm_copy = palloc_get_page(PAL_ZERO);  // 커널 메모리 확보
   if (cm_copy == NULL)
@@ -153,7 +172,8 @@ int sys_exec(const char *cmd_line) {
 }
 
 // [*]2-K 커널 open
-int sys_open(const char *file)
+int 
+sys_open(const char *file)
 {
   check_address(file);
   lock_acquire(&filesys_lock);
@@ -163,31 +183,29 @@ int sys_open(const char *file)
   {
       return -1;
   }
-  // fd table에 file추가
+  // fd_table에 file추가
   int fd = add_file_to_fdt(open_file);
 
-  // fd table 가득 찼을경우
-  // if (fd == -1)
-  // {
-  //     file_close(open_file);
-  // }
+  // fd_table 가득 찼을경우
+  if (fd == -1)
+  {
+      file_close(open_file);
+  }
   lock_release(&filesys_lock);
   return fd;
 }
 
 // [*]2-K 커널 close
-void sys_close(int fd){
+void 
+sys_close(int fd){
   // 표준 입출력 0,1 인 경우 리턴하고 종료
-  if(fd < 2) {
-      return;
-  }
+  if(fd < 2) 
+    return;
 
   // fd에 해당하는 파일 찾아서 변수에 담는다.
   struct file *cur_file = find_file_by_fd(fd);
   if (cur_file == NULL)
-  {
-      return;
-  }
+    return;
 
   // [*]2-K: fd_table에서 파일 삭제하는 함수
   remove_file_from_fdt(fd);
@@ -198,8 +216,31 @@ void sys_close(int fd){
   lock_release(&filesys_lock);
 }
 
+// [*]2-K 커널 create
+bool
+sys_create (const char *file, unsigned initial_size) {
+    
+  check_address(file);
+  lock_acquire(&filesys_lock);
+  
+  if (filesys_create(file, initial_size)) {
+      lock_release(&filesys_lock);
+      return true;
+  } else {
+      lock_release(&filesys_lock);
+      return false;
+  }
+}
+
+// bool sys_remove (const char *file);
+// int sys_filesize (int fd);
+// int sys_read (int fd, void *buffer, unsigned size);
+// void sys_seek (int fd, unsigned position);
+// unsigned sys_tell (int fd);
+
 // [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
-void check_address(void *addr) {
+void 
+check_address(void *addr) {
   struct thread *t = thread_current();
 
   if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL)
@@ -232,7 +273,8 @@ add_file_to_fdt (struct file *file)
 }
 
 // [*]2-K: fd 값을 넣으면 해당 file을 반환하는 함수
-static struct file *find_file_by_fd(int fd)
+static struct file 
+*find_file_by_fd(int fd)
 {
     struct thread *cur = thread_current();
     if (fd < 0 || fd >= OPEN_LIMIT)
@@ -242,11 +284,12 @@ static struct file *find_file_by_fd(int fd)
 }
 
 // [*]2-K: fd table에서 해당 파일을 지워준다.
-void remove_file_from_fdt(int fd) {
-    struct thread *cur = thread_current();
+void 
+remove_file_from_fdt(int fd) {
+  struct thread *cur = thread_current();
 
-    if (fd < 0 || fd >= OPEN_LIMIT)
-        return;
+  if (fd < 0 || fd >= OPEN_LIMIT)
+      return;
 
-    cur->fd_table[fd] = NULL;
+  cur->fd_table[fd] = NULL;
 }
