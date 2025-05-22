@@ -7,7 +7,7 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
-
+typedef int pid_t;
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *);
 void sys_halt (void);
@@ -15,6 +15,7 @@ void sys_exit (int status);
 int sys_write(int fd, const void *buffer, unsigned size);
 int sys_exec (const char *cmd_line);
 void check_address(void *addr);
+pid_t sys_fork(const char *thread_name);
 
 /*
 이 파일에서 프로세스 생성과 실행을 관리한다
@@ -80,7 +81,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
       }
     break;
   case SYS_FORK:
-    sys_fork()
+    f->R.rax = sys_fork(f->R.rdi);
+    break;
   default:
     thread_exit ();
     break;
@@ -119,7 +121,9 @@ int sys_write(int fd, const void *buffer, unsigned size) {
 }
 
 pid_t sys_fork(const char *thread_name){
-  process_fork(thread_name, )
+  check_address(thread_name);
+  struct intr_frame _if;
+  return process_fork(thread_name, _if);
 }
 // [*]2-K 커널 exec
 int sys_exec(const char *cmd_line) {

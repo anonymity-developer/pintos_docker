@@ -10,6 +10,11 @@
         "*.inc": "c",
         "pte.h": "c",
         "vaddr.h": "c",
-        "stdint.h": "c"
+        "stdint.h": "c",
+        "interrupt.h": "c",
+        "syscall-nr.h": "c",
+        "stdio.h": "c",
+        "flags.h": "c",
+        "loader.h": "c"
     }
 }

@@ -462,7 +462,7 @@ init_thread(struct thread *t, const char *name, int priority)
 
 	// [*]2-B. 구조체 수정한거 초기화
 	list_init(&t->child_list);
-	t->self_child_info = NULL;
+	//t->self_child_info = NULL;
 	t->parent = NULL;
 	sema_init(&t->load_sema, 0);
 	t->load_success = false;

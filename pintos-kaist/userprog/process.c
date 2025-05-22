@@ -116,7 +116,8 @@ tid_t process_fork(const char *name, struct intr_frame *if_)
 		return TID_ERROR;
 	}
 	args->parent = thread_current();
-	args->if_ = if_;
+	printf("부모 흐름에서 체크 args->parent: %p\n", args->parent);
+	args->if_ = &(thread_current()->tf);
 	args->ci = ci;
 
 	// 3. 자식 스레드를 생성, aux 인자로 args를 넘김
@@ -158,8 +159,8 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 	}
 
 	/* 2. Resolve VA from the parent's page map level 4. */
-	// 부모의 VA로부터 실제 물리 페이지 가져오기
-	// [*]2-O
+	// 부모의 VA로부터 실제 물리 페이지 정보 가져오기
+	// [*]2-o
 	parent_page = pml4_get_page(parent->pml4, va);
 	if (parent_page == NULL)
   		return false;
@@ -175,14 +176,14 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
-	// 부모 → 자식 페이지 복사
+	// 부모의 물리페이지 내용을 자식의 물리페이지 공간으로 복사해준다.
 	// writable 여부 판단
 	memcpy(newpage,parent_page,PGSIZE);
 	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
-	// 자식 page table에 insert
+	// 이 부분은 주소 va와 새로 할당된 물리 페이지 newpage를 페이지 테이블에 매핑해 주는 함수 호출
 
 	if (!pml4_set_page(current->pml4, va, newpage, writable))
 	{
@@ -210,7 +211,6 @@ __do_fork(void *aux)
 {
 	// [*]2-o. 각 작업 마다 성공여부 기록, 모든 복사작업 중 하나라도 실패하면 복제 실패로 간주해야함.
 	bool succ = true;
-	
 
 	// /* 1. Read the cpu context to local stack. */
 	// [*]2-o 1. 부모의 실행 흐름을 이어가기 위한 callee-saved reg
@@ -218,6 +218,8 @@ __do_fork(void *aux)
 	// [*]2-B. 자식 쪽 (__do_fork()) 코드도 맞춰주기
 	// [*]2-B. 자식은 aux로 넘긴 struct fork_args *를 받아서 self_child_info, parent를 설정
 	struct fork_args *args = (struct fork_args *)aux;
+	printf("자식 흐름에서 체크 args->parent: %p\n", args->parent);
+
 	struct thread *current = thread_current();
 	current->parent = args->parent; // 부모-자식 연결
 	current->self_child_info = args->ci;
@@ -226,7 +228,7 @@ __do_fork(void *aux)
 	memcpy(&if_, parent_if, sizeof(struct intr_frame));
 	// void *memcpy(void *dest, const void *src, size_t n)
 	// src 주소로부터 n바이트를 읽어서 dest 주소로 복사한다.
-	palloc_free_page(args); // 더 이상 필요 없는 인자는 해제
+	//palloc_free_page(args); // 더 이상 필요 없는 인자는 해제
 
 	/* 2. Duplicate PT */
 
@@ -242,6 +244,9 @@ __do_fork(void *aux)
 	if (!supplemental_page_table_copy(&current->spt, &parent->spt))
 		goto error;
 #else // 부모의 사용자 주소 공간을 자식에게 복사하는 과정 - VM을 사용하지 않는 경우
+printf("pml4 = %p\n", args->parent->pml4);
+if (args->parent->pml4 == NULL)
+    printf("pml4 is NULL!\n");
 	if (!pml4_for_each(args->parent->pml4, duplicate_pte, args->parent))
 		// 부모의 페이지 테이블(pml4)을 하나씩 순회하며, 각각의 유저 페이지(va, pte)를 duplicate_pte()에 넘기는 구조
 		goto error;
@@ -275,7 +280,7 @@ __do_fork(void *aux)
 			current->fd_table[i] = NULL;
 		}
 	}
-	current->next_fd = parent->next_fd;
+	current->next_fd = args->parent->next_fd;
 
 	// 자식이 준비되기도 전에 부모가 진행되면 안 된다. 부모가 wait하라는건가?
 	
@@ -285,6 +290,10 @@ __do_fork(void *aux)
 
 	/* Finally, switch to the newly created process. */
 	// 자식 프로세스의 준비가 끝났다면, 실제 유저모드로 진입 (do_iret) 시도한다.
+	current->tf.R.rax=0;
+
+	// [*]2-o todo parent에게 세마업
+	
 	if (succ)
 		do_iret(&if_);
 error:
@@ -583,10 +592,14 @@ load(const char *file_name, struct intr_frame *if_)
 	int i;
 
 	/* Allocate and activate page directory. */
-	// 가상주소공간 준비
+	// 가상주소공간 초기화
 	t->pml4 = pml4_create();
 	if (t->pml4 == NULL)
 		goto done;
+	printf("부모 pml4 초기화: %p\n", t->pml4);
+
+	printf("load에서 부모 스레드 주소: %p\n", t);
+	// 페이지 테이블 활성화
 	process_activate(thread_current());
 
 	/* Open executable file. */
