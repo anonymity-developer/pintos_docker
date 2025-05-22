@@ -15,6 +15,7 @@
         "syscall-nr.h": "c",
         "stdio.h": "c",
         "flags.h": "c",
-        "loader.h": "c"
+        "loader.h": "c",
+        "palloc.h": "c"
     }
 }
