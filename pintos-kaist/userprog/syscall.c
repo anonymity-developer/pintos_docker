@@ -17,6 +17,7 @@ void sys_exit (int status);
 int sys_write(int fd, const void *buffer, unsigned size);
 int sys_exec (const char *cmd_line);
 int sys_open(const char *file);
+void sys_close(int fd);
 void check_address(void *addr);
 static struct file *find_file_by_fd(int fd);
 
@@ -82,13 +83,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
       }
     break;
   case SYS_OPEN:
-    f->R.rax = open(f->R.rdi);
+    f->R.rax = sys_open(f->R.rdi);
     break;
+  case SYS_CLOSE:
+    sys_close(f->R.rdi);
+    break;
+  // case SYS_READ:
+  //     f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+  //     break;
   default:
     thread_exit ();
     break;
   }
-  // printf ("system call!\n");
 }
 
 // [*]2-K : 커널 halt는 프로그램 종료
@@ -99,13 +105,13 @@ void sys_halt(void) {
 // [*]2-K : 커널 exit은 상태값을 받아서 출력 후 종료
 void sys_exit(int status) {
   struct thread *cur = thread_current();
-  // 정상적으로 종료됐으면 status는 0을 받는다.
 
+  // 정상적으로 종료됐으면 status는 0을 받는다.
   printf("%s: exit(%d)\n", cur->name, status);
   thread_exit();  // process_exit() → schedule() → _cleanup
 }
 
-// [*]2-K : 커널 sys_write
+// [*]2-K : 커널 write
 int sys_write(int fd, const void *buffer, unsigned size) {
 
   check_address(buffer);
@@ -147,7 +153,7 @@ int sys_exec(const char *cmd_line) {
 }
 
 // [*]2-K 커널 open
-int open(const char *file)
+int sys_open(const char *file)
 {
   check_address(file);
   lock_acquire(&filesys_lock);
@@ -169,16 +175,37 @@ int open(const char *file)
   return fd;
 }
 
+// [*]2-K 커널 close
+void sys_close(int fd){
+  // 표준 입출력 0,1 인 경우 리턴하고 종료
+  if(fd < 2) {
+      return;
+  }
 
+  // fd에 해당하는 파일 찾아서 변수에 담는다.
+  struct file *cur_file = find_file_by_fd(fd);
+  if (cur_file == NULL)
+  {
+      return;
+  }
+
+  // [*]2-K: fd_table에서 파일 삭제하는 함수
+  remove_file_from_fdt(fd);
+  
+  lock_acquire(&filesys_lock);
+  // 파일 닫기 (원래 있던 함수)
+  file_close(cur_file);
+  lock_release(&filesys_lock);
+}
 
 // [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
 void check_address(void *addr) {
-    struct thread *t = thread_current();
+  struct thread *t = thread_current();
 
-    if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL)
-    {
-        sys_exit(-1);
-    }
+  if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL)
+  {
+      sys_exit(-1);
+  }
 }
 
 // [*]2-K: 파일을 현재 프로세스의 fdt에 추가
@@ -186,19 +213,19 @@ int
 add_file_to_fdt (struct file *file)
 {
   struct thread *cur = thread_current ();
-  struct file **fdt = cur->fd_table;     /* fd_table 포인터 가져오기 */
+  struct file **fdt = cur->fd_table;     // fd_table 포인터 가져오기 (빨간줄 정상)
   int start = cur->next_fd;
-  int fd = start;                         /* fd를 start로 초기화 */
+  int fd = start;                        // fd를 start로 초기화 (빨간줄 정상)
 
-  /* 1) OPEN_LIMIT 범위 안에서 비어 있는 슬롯을 찾는다. */
+  // 1) OPEN_LIMIT 범위 안에서 비어 있는 슬롯을 찾는다.
   while (fd < OPEN_LIMIT && fdt[fd] != NULL)
     fd++;
 
-  /* 2) 빈 슬롯이 없으면 -1 리턴 */
+  // 2) 빈 슬롯이 없으면 -1 리턴
   if (fd >= OPEN_LIMIT)
     return -1;
 
-  /* 3) 빈 슬롯에 파일 저장, next_fd 갱신, fd 반환 */
+  // 3) 빈 슬롯에 파일 저장, next_fd 갱신, fd 반환
   fdt[fd] = file;
   cur->next_fd = fd + 1;
   return fd;
@@ -209,8 +236,17 @@ static struct file *find_file_by_fd(int fd)
 {
     struct thread *cur = thread_current();
     if (fd < 0 || fd >= OPEN_LIMIT)
-    {
         return NULL;
-    }
+
     return cur->fd_table[fd];
+}
+
+// [*]2-K: fd table에서 해당 파일을 지워준다.
+void remove_file_from_fdt(int fd) {
+    struct thread *cur = thread_current();
+
+    if (fd < 0 || fd >= OPEN_LIMIT)
+        return;
+
+    cur->fd_table[fd] = NULL;
 }

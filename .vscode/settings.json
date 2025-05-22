@@ -1,12 +1,13 @@
 {
     "files.associations": {
-        "stdbool.h": "c",
-        "random.h": "c",
-        "typeinfo": "c",
-        "main.h": "c",
-        "cstdlib": "c",
-        "syscall.h": "c",
-        "thread.h": "c",
-        "*.inc": "c"
+      "stdbool.h": "c",
+      "random.h": "c",
+      "typeinfo": "c",
+      "main.h": "c",
+      "cstdlib": "c",
+      "syscall.h": "c",
+      "thread.h": "c",
+      "*.inc": "c",
+      "flags.h": "c"
     }
 }
