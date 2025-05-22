@@ -392,7 +392,7 @@ int process_wait(tid_t child_tid) // UNUSED 지움
 	// return -1;
 
 	// 자식 리스트에서 해당 pid를 찾지 못했거나 조건 미충족 시 -1 반환
-	for (int i = 0; i < 1000000000; i++){
+	for (int i = 0; i < 8000000000; i++){
 	}
 	return -1;
 }

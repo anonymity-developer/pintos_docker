@@ -254,22 +254,29 @@ int
 add_file_to_fdt (struct file *file)
 {
   struct thread *cur = thread_current ();
-  struct file **fdt = cur->fd_table;     // fd_table 포인터 가져오기 (빨간줄 정상)
-  int start = cur->next_fd;
-  int fd = start;                        // fd를 start로 초기화 (빨간줄 정상)
+    for (int fd = 2; fd < OPEN_LIMIT; fd++) {
+      if (cur->fd_table[fd] == NULL) {
+          cur->fd_table[fd] = file;
+          return fd;
+      }
+  }
+  return -1;
+  // struct file **fdt = cur->fd_table;     // fd_table 포인터 가져오기 (빨간줄 정상)
+  // int start = cur->next_fd;
+  // int fd = start;                        // fd를 start로 초기화 (빨간줄 정상)
 
-  // 1) OPEN_LIMIT 범위 안에서 비어 있는 슬롯을 찾는다.
-  while (fd < OPEN_LIMIT && fdt[fd] != NULL)
-    fd++;
+  // // 1) OPEN_LIMIT 범위 안에서 비어 있는 슬롯을 찾는다.
+  // while (fd < OPEN_LIMIT && fdt[fd] != NULL)
+  //   fd++;
 
-  // 2) 빈 슬롯이 없으면 -1 리턴
-  if (fd >= OPEN_LIMIT)
-    return -1;
+  // // 2) 빈 슬롯이 없으면 -1 리턴
+  // if (fd >= OPEN_LIMIT)
+  //   return -1;
 
-  // 3) 빈 슬롯에 파일 저장, next_fd 갱신, fd 반환
-  fdt[fd] = file;
-  cur->next_fd = fd + 1;
-  return fd;
+  // // 3) 빈 슬롯에 파일 저장, next_fd 갱신, fd 반환
+  // fdt[fd] = file;
+  // cur->next_fd = fd + 1;
+  // return fd;
 }
 
 // [*]2-K: fd 값을 넣으면 해당 file을 반환하는 함수
