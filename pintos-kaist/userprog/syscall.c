@@ -18,6 +18,13 @@ void sys_exit (int status);
 int sys_write(int fd, const void *buffer, unsigned size);
 int sys_exec (const char *cmd_line);
 int sys_open(const char *file);
+void sys_close(int fd);
+bool sys_create (const char *file, unsigned initial_size);
+bool sys_remove (const char *file);
+int sys_filesize (int fd);
+int sys_read (int fd, void *buffer, unsigned size);
+void sys_seek (int fd, unsigned position);
+unsigned sys_tell (int fd);
 void check_address(void *addr);
 pid_t sys_fork(const char *thread_name, struct intr_frame *fff);
 static struct file *find_file_by_fd(int fd);
@@ -87,7 +94,28 @@ syscall_handler (struct intr_frame *f UNUSED) {
     f->R.rax = sys_fork(f->R.rdi, f);
     break;
   case SYS_OPEN:
-    f->R.rax = open(f->R.rdi);
+    f->R.rax = sys_open(f->R.rdi);
+    break;
+  case SYS_CLOSE:
+    sys_close(f->R.rdi);
+    break;
+  case SYS_CREATE:
+    f->R.rax = sys_create(f->R.rdi, f->R.rsi);
+    break;
+  case SYS_READ:
+    f->R.rax = sys_read(f->R.rdi, f->R.rsi, f->R.rdx);
+    break;
+  case SYS_REMOVE:
+    f->R.rax = sys_remove(f->R.rdi);
+    break;
+  case SYS_SEEK:
+    sys_seek(f->R.rdi, f->R.rsi);
+    break;
+  case SYS_TELL:
+    f->R.rax = sys_tell(f->R.rdi);
+    break;
+  case SYS_FILESIZE:
+    f->R.rax = sys_filesize(f->R.rdi);
     break;
   case SYS_WAIT:
     f->R.rax = sys_wait(f->R.rdi);
@@ -95,37 +123,45 @@ syscall_handler (struct intr_frame *f UNUSED) {
     thread_exit ();
     break;
   }
-  // printf ("system call!\n");
 }
 
 // [*]2-K : 커널 halt는 프로그램 종료
-void sys_halt(void) {
+void 
+sys_halt(void) {
   power_off();
 }
 
 // [*]2-K : 커널 exit은 상태값을 받아서 출력 후 종료
-void sys_exit(int status) {
+void 
+sys_exit(int status) {
   struct thread *cur = thread_current();
+
   // 정상적으로 종료됐으면 status는 0을 받는다.
   cur->exit_status = status;
   printf("%s: exit(%d)\n", cur->name, status);
   thread_exit();  // process_exit() → schedule() → _cleanup
 }
 
-// [*]2-K : 커널 sys_write
-int sys_write(int fd, const void *buffer, unsigned size) {
-
+// [*]2-K : 커널 write
+int
+sys_write(int fd, const void *buffer, unsigned size) {
   check_address(buffer);
-
-  // STDOUT인 경우 콘솔에 출력
+  struct file *file = find_file_by_fd(fd);
+  int bytes_written = 0;
+  // 파일이 없거나, 표준입력인 경우 -1 리턴
+  if (file == NULL && fd == 0)
+    return -1;
+  // 표준출력인 경우 콘솔에 출력
   if (fd == 1)
-    {
-      putbuf(buffer, size);
-      return size;
-    }
-
-  // TODO: 그 외 fd는 추가 file_write() 구현 필요
-  return -1;
+  {
+    putbuf(buffer, size);
+    bytes_written = size;
+  } else {
+    lock_acquire(&filesys_lock);
+    bytes_written = file_write(file, buffer, size);
+    lock_release(&filesys_lock);
+    return bytes_written;
+  }
 }
 
 pid_t sys_fork(const char *thread_name, struct intr_frame *fff){
@@ -133,12 +169,12 @@ pid_t sys_fork(const char *thread_name, struct intr_frame *fff){
   return process_fork(thread_name, fff);
 }
 // [*]2-K 커널 exec
-int sys_exec(const char *cmd_line) {
-
-  // 1) 유저 영역에서 커널 영역 침범하지 않았는지 확인
+int
+sys_exec(const char *cmd_line) {
+  // 유저 영역에서 커널 영역 침범하지 않았는지 확인
   check_address(cmd_line);
 
-  // 2) 커널 영역에 명령어 복사를 위한 공간 확보
+  // 커널 영역에 명령어 복사를 위한 공간 확보
   int cmd_line_size = strlen(cmd_line) + 1;
   char *cm_copy = palloc_get_page(PAL_ZERO);  // 커널 메모리 확보
   if (cm_copy == NULL)
@@ -158,7 +194,8 @@ int sys_exec(const char *cmd_line) {
 }
 
 // [*]2-K 커널 open
-int open(const char *file)
+int 
+sys_open(const char *file)
 {
   check_address(file);
   lock_acquire(&filesys_lock);
@@ -166,32 +203,160 @@ int open(const char *file)
 
   if (open_file == NULL)
   {
-      return -1;
+    lock_release(&filesys_lock);
+    return -1;
   }
-  // fd table에 file추가
+  // fd_table에 file추가
   int fd = add_file_to_fdt(open_file);
 
-  // fd table 가득 찼을경우
-  // if (fd == -1)
-  // {
-  //     file_close(open_file);
-  // }
+  // fd_table 가득 찼을경우
+  if (fd == -1)
+  {
+    file_close(open_file);
+    lock_release(&filesys_lock);
+  }
   lock_release(&filesys_lock);
   return fd;
 }
+
+// [*]2-K 커널 close, 이미 open된 파일 닫음
+void 
+sys_close(int fd){
+  struct file *file = find_file_by_fd(fd);
+  // 표준 입출력 0,1 인 경우 리턴하고 종료
+   if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
+
+  lock_acquire(&filesys_lock);
+  file_close(file);
+  file = NULL;
+  lock_release(&filesys_lock);
 
 int sys_wait(pid_t pid){
   return process_wait(pid);
 }
 
-// [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
-void check_address(void *addr) {
-    struct thread *t = thread_current();
+// [*]2-K 커널 create
+bool
+sys_create (const char *file, unsigned initial_size) {
+    
+  check_address(file);
+  lock_acquire(&filesys_lock);
+  
+  // if (filesys_create(file, initial_size)) {
+  //     lock_release(&filesys_lock);
+  //     return true;
+  // } else {
+  //     lock_release(&filesys_lock);
+  //     return false;
+  // }
+  bool success = filesys_create(file, initial_size);
+  lock_release(&filesys_lock);
 
-    if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL)
+  return success;
+}
+
+// [*]2-K 커널 read, 사용자 입력일 때
+int
+sys_read(int fd, void *buffer, unsigned size)
+{
+  check_address(buffer);
+  
+  // 읽은 바이트 수 저장할 변수
+  int read_byte = 0;
+  // 버퍼를 바이트 단위로 접근하기 위한 포인터
+  uint8_t *read_buffer = buffer;
+
+  // 표준입력일 경우 데이터를 읽는다
+  if (fd == 0)
+  {
+    char key;
+    for (read_byte = 0; read_byte < size; read_byte++)
     {
-        sys_exit(-1);
+      // input_getc 함수로 입력을 가져오고, buffer에 저장한다
+      key = input_getc();
+      *read_buffer++ = key;
+
+      // 널 문자를 만나면 종료한다.
+      if (key == '\0'){
+        break;
+      }
     }
+  }
+  // 표준출력일 경우 -1을 리턴
+  else if (fd == 1){
+      return -1;
+  }
+  // 2이상, 즉 파일일 경우 파일을 읽어온다.
+  else {
+    struct file *file = find_file_by_fd(fd);
+    if (file == NULL){
+        return -1;
+    }
+    lock_acquire(&filesys_lock);
+    read_byte = file_read(file, buffer, size);
+    lock_release(&filesys_lock);
+  }
+
+  // 읽어온 바이트 수 리턴
+  return read_byte;
+}
+
+// [*]2-K 커널 remove, 디스크에서 파일 지움
+bool
+sys_remove (const char *file) {
+  check_address(file);
+
+  lock_acquire(&filesys_lock);
+  bool success = filesys_remove(file);
+  lock_release(&filesys_lock);
+
+  return success;
+}
+
+// [*]2-K 커널 seek, fdt에서 file 위치 찾기
+void 
+sys_seek (int fd, unsigned position){
+  struct file *file = find_file_by_fd(fd);
+  check_address(file);
+  if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
+
+  lock_acquire(&filesys_lock);
+  file_seek(file, position);
+  lock_release(&filesys_lock);
+}
+
+// [*]2-K 커널 tell, 시작 위치 변경
+unsigned sys_tell (int fd){
+  struct file *file = find_file_by_fd(fd);
+  check_address(file);
+  if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
+
+  return file_tell(file);
+}
+
+// [*]2-K 커널 filesize, fd 파일 길이 반환
+int 
+sys_filesize (int fd){
+  struct file *file = find_file_by_fd(fd);
+
+  if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return -1;
+
+  lock_acquire(&filesys_lock);
+  int length = file_length(file);
+  lock_release(&filesys_lock);
+
+  return length;
+}
+
+// [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
+void 
+check_address(void *addr) {
+  struct thread *t = thread_current();
+
+  if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL)
+  {
+      sys_exit(-1);
+  }
 }
 
 // [*]2-K: 파일을 현재 프로세스의 fdt에 추가
@@ -199,31 +364,22 @@ int
 add_file_to_fdt (struct file *file)
 {
   struct thread *cur = thread_current ();
-  struct file **fdt = cur->fd_table;     /* fd_table 포인터 가져오기 */
-  int start = cur->next_fd;
-  int fd = start;                         /* fd를 start로 초기화 */
-
-  /* 1) OPEN_LIMIT 범위 안에서 비어 있는 슬롯을 찾는다. */
-  while (fd < OPEN_LIMIT && fdt[fd] != NULL)
-    fd++;
-
-  /* 2) 빈 슬롯이 없으면 -1 리턴 */
-  if (fd >= OPEN_LIMIT)
-    return -1;
-
-  /* 3) 빈 슬롯에 파일 저장, next_fd 갱신, fd 반환 */
-  fdt[fd] = file;
-  cur->next_fd = fd + 1;
-  return fd;
+    for (int fd = 2; fd < OPEN_LIMIT; fd++) {
+      if (cur->fd_table[fd] == NULL) {
+          cur->fd_table[fd] = file;
+          return fd;
+      }
+  }
+  return -1;
 }
 
 // [*]2-K: fd 값을 넣으면 해당 file을 반환하는 함수
-static struct file *find_file_by_fd(int fd)
+static struct file 
+*find_file_by_fd(int fd)
 {
     struct thread *cur = thread_current();
     if (fd < 0 || fd >= OPEN_LIMIT)
-    {
         return NULL;
-    }
+
     return cur->fd_table[fd];
 }

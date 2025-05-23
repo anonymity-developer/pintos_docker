@@ -233,6 +233,8 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.eflags = FLAG_IF;				  // 인터럽트 플래그 설정 (인터럽트 활성화)
 
   // [*]2-K: 표준입력, 표준출력 할당 후 2부터 할당하기
+  memset(t->fd_table, 0, sizeof t->fd_table);
+  
   t->next_fd = 2;  // 0은 입력, 1은 출력에 이미 할당됨
   t->fd_table[0] = 1;
   t->fd_table[1] = 2;
@@ -479,7 +481,6 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->exit_status = -1;
 
 	t->parent = NULL;
-	
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

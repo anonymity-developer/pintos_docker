@@ -31,11 +31,6 @@ typedef int tid_t;
 #define OPEN_LIMIT 64 // 최대 동시 오픈가능한 파일 수
 
 
-// [*]2-K: 파일 디스크립터 관련 매크로
-#define FDT_PAGES 3  // fd table에 할당할 페이지 수
-#define FDT_COUNT_LIMIT FDT_PAGES *(1<<9)  // fd table 최대 크기 3 * 512 : 1536
-
-
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -109,7 +104,7 @@ struct thread
 	uint64_t *pml4; /* Page map level 4 */
 	// [*]2-O
 	// 커널에서 페이지 테이블 접근을 하기위한 포인터
-	struct file *fd_table[OPEN_LIMIT]; // 오픈한 파일을 가리키는 배열
+  struct file *fd_table[OPEN_LIMIT];  // 오픈한 파일을 가리키는 배열
 	int next_fd; // 다음 오픈시 부여될 파일디스크립터
 
 #endif
