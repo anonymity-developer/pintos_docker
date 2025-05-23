@@ -217,6 +217,7 @@ tid_t thread_create(const char *name, int priority,
 	init_thread(t, name, priority); // 스레드 기본 정보 초기화
 	tid = t->tid = allocate_tid();	// 스레드 ID 할당 및 저장
 	// [*]2-o 자식 스레드 만들어주면서 부모 자신을 부모필드에 직접 추가.
+
 	t->parent = thread_current();
 	// [*]2-o 부모의 child list에 생성되는 스레드 t의 elem 넣기.
 	list_push_back(&t->parent->child_list,&t->child_elem);
@@ -233,7 +234,8 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.eflags = FLAG_IF;				  // 인터럽트 플래그 설정 (인터럽트 활성화)
 
   // [*]2-K: 표준입력, 표준출력 할당 후 2부터 할당하기
-  memset(t->fd_table, 0, sizeof t->fd_table);
+  //memset(t->fd_table, 0, sizeof(t->fd_table));
+  //printf("%d\n", sizeof(t->fd_table));
   
   t->next_fd = 2;  // 0은 입력, 1은 출력에 이미 할당됨
   t->fd_table[0] = 1;
