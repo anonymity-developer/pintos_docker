@@ -85,23 +85,37 @@ initd(void *f_name)
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 // [*]2-B. fork 구현
-tid_t process_fork(const char *name, struct intr_frame *if_)
+tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 {
-	memcpy(if_, &thread_current()->tf, sizeof(struct intr_frame));
-
-	// 3. 자식 스레드를 생성, aux 인자로 args를 넘김
-	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, args);
+	struct thread *cur = thread_current(); // 현재 부모 스레드
+	struct thread *real_child;
+	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, &if_);
 	if (tid == TID_ERROR)
 	{
-		palloc_free_page(ci);
-		palloc_free_page(args);
 		return TID_ERROR;
 	}
 
-	// 4. 자식 구조체 tid 세팅 후 부모의 리스트에 추가
-	ci->tid = tid;
-	list_push_back(&thread_current()->child_list, &ci->elem);
+	struct list_elem *e;
+	for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) // 자식 리스트를 순회
+	{
+		struct thread *child = list_entry(e, struct thread, child_elem);
+		
+		if (child->tid != tid){						   
+			continue;
+		}
+		else {
+			real_child = child;
+			break;
+		}
+	}
 
+
+	sema_down(&cur->fork_sema);
+	// 세마 업으로 깨어났을때, 정상복제인지 복제실패인지 확인하고 실패하면 TID_ERROR 반환;
+	if (real_child->exit_status == -1)
+	{
+		return TID_ERROR;
+	}
 	return tid;
 }
 
@@ -147,7 +161,7 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 	 *    TODO: according to the result). */
 	// 부모의 물리페이지 내용을 자식의 물리페이지 공간으로 복사해준다.
 	// writable 여부 판단
-	memcpy(newpage,parent_page,PGSIZE);
+	memcpy(newpage, parent_page, PGSIZE);
 	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
@@ -184,17 +198,10 @@ __do_fork(void *aux)
 	// /* 1. Read the cpu context to local stack. */
 	// [*]2-o 1. 부모의 실행 흐름을 이어가기 위한 callee-saved reg
 
-	// [*]2-B. 자식 쪽 (__do_fork()) 코드도 맞춰주기
-	// [*]2-B. 자식은 aux로 넘긴 struct fork_args *를 받아서 self_child_info, parent를 설정
-	struct fork_args *args = (struct fork_args *)aux;
-	printf("자식 흐름에서 체크 args->parent: %p\n", args->parent);
+	struct intr_frame *parent_tf = (struct intr_frame*) aux;
+	struct thread *cur = thread_current();
 
-	struct thread *current = thread_current();
-	current->parent = args->parent; // 부모-자식 연결
-	current->self_child_info = args->ci;
-	struct intr_frame *parent_if = args->if_; // 레지스터 상태 복사
-	struct intr_frame if_ = current->tf;
-	memcpy(&if_, parent_if, sizeof(struct intr_frame));
+	memcpy(&cur->tf, parent_tf, sizeof(struct intr_frame));
 	// void *memcpy(void *dest, const void *src, size_t n)
 	// src 주소로부터 n바이트를 읽어서 dest 주소로 복사한다.
 	//palloc_free_page(args); // 더 이상 필요 없는 인자는 해제
@@ -203,20 +210,20 @@ __do_fork(void *aux)
 
 	// 2. 부모프로세스가 갖고있는 가상메모리 구조
 	// 2-1. 단, 실제 물리메모리 영역이 겹치면 안됨
-	current->pml4 = pml4_create();
-	if (current->pml4 == NULL)
+	cur->pml4 = pml4_create();
+	if (cur->pml4 == NULL)
 		goto error;
 
-	process_activate(current);
+	process_activate(cur);
 #ifdef VM
 	supplemental_page_table_init(&current->spt);
 	if (!supplemental_page_table_copy(&current->spt, &parent->spt))
 		goto error;
 #else // 부모의 사용자 주소 공간을 자식에게 복사하는 과정 - VM을 사용하지 않는 경우
-printf("pml4 = %p\n", args->parent->pml4);
-if (args->parent->pml4 == NULL)
-    printf("pml4 is NULL!\n");
-	if (!pml4_for_each(args->parent->pml4, duplicate_pte, args->parent))
+//printf("pml4 = %p\n", args->parent->pml4);
+if (cur->parent->pml4 == NULL)
+    //printf("pml4 is NULL!\n");
+	if (!pml4_for_each(cur->parent->pml4, duplicate_pte, cur->parent))
 		// 부모의 페이지 테이블(pml4)을 하나씩 순회하며, 각각의 유저 페이지(va, pte)를 duplicate_pte()에 넘기는 구조
 		goto error;
 #endif
@@ -234,7 +241,7 @@ if (args->parent->pml4 == NULL)
 	
 
 	for (int i = 0; i < OPEN_LIMIT; i++){
-		struct file *parent_file = current->parent->fd_table[i];
+		struct file *parent_file = cur->parent->fd_table[i];
 		if (parent_file != NULL){
 			struct file *child_file = file_duplicate(parent_file);
 			if (child_file == NULL){
@@ -243,15 +250,13 @@ if (args->parent->pml4 == NULL)
 				printf("out of memory during file_duplicate at %d\n", i);
 				goto error;
 			}
-			current->fd_table[i] = child_file;
+			cur->fd_table[i] = child_file;
 		}
 		else{
-			current->fd_table[i] = NULL;
+			cur->fd_table[i] = NULL;
 		}
 	}
-	current->next_fd = args->parent->next_fd;
-
-	// 자식이 준비되기도 전에 부모가 진행되면 안 된다. 부모가 wait하라는건가?
+	cur->next_fd = cur->parent->next_fd;
 	
 	process_init();
 
@@ -259,13 +264,14 @@ if (args->parent->pml4 == NULL)
 
 	/* Finally, switch to the newly created process. */
 	// 자식 프로세스의 준비가 끝났다면, 실제 유저모드로 진입 (do_iret) 시도한다.
-	current->tf.R.rax=0;
-
-	// [*]2-o todo parent에게 세마업
-	
+	cur->tf.R.rax=0;
+	cur->exit_status = 0;
+	sema_up(&cur->parent->fork_sema);
 	if (succ)
-		do_iret(&if_);
+		do_iret(&cur->tf);
 error:
+	cur->exit_status = -1;
+	sema_up(&cur->parent->fork_sema);
 	thread_exit();
 }
 
@@ -387,6 +393,9 @@ int process_wait(tid_t child_tid) // UNUSED 지움
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 
+	if (child_tid == -1){
+		return -1;
+	}
 	
 	struct thread *cur = thread_current();
 	struct thread *real_child = NULL;

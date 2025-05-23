@@ -216,7 +216,7 @@ tid_t thread_create(const char *name, int priority,
 	/* Initialize thread. */
 	init_thread(t, name, priority); // 스레드 기본 정보 초기화
 	tid = t->tid = allocate_tid();	// 스레드 ID 할당 및 저장
-	// [*]2-o 스레드 만들어주면서 자신을 부모필드에 직접 추가.
+	// [*]2-o 자식 스레드 만들어주면서 부모 자신을 부모필드에 직접 추가.
 	t->parent = thread_current();
 	// [*]2-o 부모의 child list에 생성되는 스레드 t의 elem 넣기.
 	list_push_back(&t->parent->child_list,&t->child_elem);
@@ -473,6 +473,7 @@ init_thread(struct thread *t, const char *name, int priority)
 	list_init(&t->child_list);
 	sema_init(&t->exit_sema, 0);
 	sema_init(&t->free_sema, 0);
+	sema_init(&t->fork_sema, 0);
 
 	// [*]2-o 정상종료가 될경우 값이 바뀌도록 스레드 생성시는 비정상 종료상태로
 	t->exit_status = -1;
