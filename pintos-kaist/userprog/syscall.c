@@ -28,6 +28,7 @@ unsigned sys_tell (int fd);
 void check_address(void *addr);
 pid_t sys_fork(const char *thread_name, struct intr_frame *fff);
 static struct file *find_file_by_fd(int fd);
+int sys_wait(pid_t pid);
 
 /*
 이 파일에서 프로세스 생성과 실행을 관리한다
@@ -119,6 +120,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
     break;
   case SYS_WAIT:
     f->R.rax = sys_wait(f->R.rdi);
+    break;
   default:
     thread_exit ();
     break;
@@ -135,6 +137,7 @@ sys_halt(void) {
 void 
 sys_exit(int status) {
   struct thread *cur = thread_current();
+  
 
   // 정상적으로 종료됐으면 status는 0을 받는다.
   cur->exit_status = status;
@@ -222,14 +225,16 @@ sys_open(const char *file)
 // [*]2-K 커널 close, 이미 open된 파일 닫음
 void 
 sys_close(int fd){
-  struct file *file = find_file_by_fd(fd);
-  // 표준 입출력 0,1 인 경우 리턴하고 종료
-   if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
+  struct thread *cur = thread_current ();
+  if (fd < 2 || fd >= OPEN_LIMIT || cur->fd_table[fd] == NULL)
+    return;
+  cur->fd_table[fd] = NULL;
 
   lock_acquire(&filesys_lock);
-  file_close(file);
-  file = NULL;
+  file_close(cur->fd_table[fd]);
   lock_release(&filesys_lock);
+}
+
 
 int sys_wait(pid_t pid){
   return process_wait(pid);
@@ -374,8 +379,7 @@ add_file_to_fdt (struct file *file)
 }
 
 // [*]2-K: fd 값을 넣으면 해당 file을 반환하는 함수
-static struct file 
-*find_file_by_fd(int fd)
+static struct file *find_file_by_fd(int fd)
 {
     struct thread *cur = thread_current();
     if (fd < 0 || fd >= OPEN_LIMIT)

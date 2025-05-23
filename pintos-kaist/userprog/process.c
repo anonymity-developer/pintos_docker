@@ -89,7 +89,7 @@ tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 {
 	struct thread *cur = thread_current(); // 현재 부모 스레드
 	struct thread *real_child;
-	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, &if_);
+	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, if_);
 	if (tid == TID_ERROR)
 	{
 		return TID_ERROR;
@@ -113,9 +113,10 @@ tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 	sema_down(&cur->fork_sema);
 	// 세마 업으로 깨어났을때, 정상복제인지 복제실패인지 확인하고 실패하면 TID_ERROR 반환;
 	if (real_child->exit_status == -1)
-	{
+	{	
 		return TID_ERROR;
 	}
+	
 	return tid;
 }
 
@@ -200,8 +201,10 @@ __do_fork(void *aux)
 
 	struct intr_frame *parent_tf = (struct intr_frame*) aux;
 	struct thread *cur = thread_current();
+	// printf("%p\n", parent_tf);
 
 	memcpy(&cur->tf, parent_tf, sizeof(struct intr_frame));
+
 	// void *memcpy(void *dest, const void *src, size_t n)
 	// src 주소로부터 n바이트를 읽어서 dest 주소로 복사한다.
 	//palloc_free_page(args); // 더 이상 필요 없는 인자는 해제
@@ -213,21 +216,16 @@ __do_fork(void *aux)
 	cur->pml4 = pml4_create();
 	if (cur->pml4 == NULL)
 		goto error;
-
 	process_activate(cur);
 #ifdef VM
 	supplemental_page_table_init(&current->spt);
 	if (!supplemental_page_table_copy(&current->spt, &parent->spt))
 		goto error;
 #else // 부모의 사용자 주소 공간을 자식에게 복사하는 과정 - VM을 사용하지 않는 경우
-//printf("pml4 = %p\n", args->parent->pml4);
-if (cur->parent->pml4 == NULL)
-    //printf("pml4 is NULL!\n");
 	if (!pml4_for_each(cur->parent->pml4, duplicate_pte, cur->parent))
 		// 부모의 페이지 테이블(pml4)을 하나씩 순회하며, 각각의 유저 페이지(va, pte)를 duplicate_pte()에 넘기는 구조
 		goto error;
 #endif
-
 
  	/*3. 부모가 오픈한 파일 디스크립터 목록*/
 	
@@ -240,7 +238,8 @@ if (cur->parent->pml4 == NULL)
 
 	
 
-	for (int i = 0; i < OPEN_LIMIT; i++){
+	for (int i = 2; i < OPEN_LIMIT; i++){
+
 		struct file *parent_file = cur->parent->fd_table[i];
 		if (parent_file != NULL){
 			struct file *child_file = file_duplicate(parent_file);
@@ -257,7 +256,6 @@ if (cur->parent->pml4 == NULL)
 		}
 	}
 	cur->next_fd = cur->parent->next_fd;
-	
 	process_init();
 
 		// 중요한 점은, 부모는 자식이 모든 자원 복제에 성공했을 때에만 fork()에서 리턴해야 한다. 하나라도 삐끗하면 succ=flase 처리 해야함.
@@ -344,7 +342,7 @@ int process_exec(void *f_name)
 	argv[2] = NULL
 	*/
 
-	file_name = argv[0];
+	memcpy(file_name, argv[0], sizeof(argv[0])+ 1);
 	// 레지스터에 main함수에서 쓰이는 첫번째 인자와 두번째 인자 전달.
 	_if.R.rdi = argc;
 	_if.R.rsi = (uint64_t)argv; // 주소값을 정수로 전달할 때, uint64_t를 사용.
@@ -418,7 +416,6 @@ int process_wait(tid_t child_tid) // UNUSED 지움
 	if (real_child == NULL){
 		return -1;
 	}
-
 	sema_down(&real_child->exit_sema);	 // 자식이 종료될 때까지 대기 (sema_down)
 	int status = real_child->exit_status; // 자식이 종료된 후 exit_status를 받아옴
 
