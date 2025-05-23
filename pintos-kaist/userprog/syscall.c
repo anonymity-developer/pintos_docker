@@ -7,17 +7,19 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+typedef int pid_t;
 #include "threads/palloc.h"
 #include <string.h>
 
 void syscall_entry(void);
-void syscall_handler(struct intr_frame *);
+void syscall_handler(struct intr_frame *f);
 void sys_halt (void);
 void sys_exit (int status);
 int sys_write(int fd, const void *buffer, unsigned size);
 int sys_exec (const char *cmd_line);
 int sys_open(const char *file);
 void check_address(void *addr);
+pid_t sys_fork(const char *thread_name, struct intr_frame *fff);
 static struct file *find_file_by_fd(int fd);
 
 /*
@@ -81,9 +83,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
       sys_exit(-1);
       }
     break;
+  case SYS_FORK:
+    f->R.rax = sys_fork(f->R.rdi, f);
+    break;
   case SYS_OPEN:
     f->R.rax = open(f->R.rdi);
     break;
+  case SYS_WAIT:
+    f->R.rax = sys_wait(f->R.rdi);
   default:
     thread_exit ();
     break;
@@ -100,7 +107,7 @@ void sys_halt(void) {
 void sys_exit(int status) {
   struct thread *cur = thread_current();
   // 정상적으로 종료됐으면 status는 0을 받는다.
-
+  cur->exit_status = status;
   printf("%s: exit(%d)\n", cur->name, status);
   thread_exit();  // process_exit() → schedule() → _cleanup
 }
@@ -121,6 +128,10 @@ int sys_write(int fd, const void *buffer, unsigned size) {
   return -1;
 }
 
+pid_t sys_fork(const char *thread_name, struct intr_frame *fff){
+  check_address(thread_name);
+  return process_fork(thread_name, fff);
+}
 // [*]2-K 커널 exec
 int sys_exec(const char *cmd_line) {
 
@@ -169,7 +180,9 @@ int open(const char *file)
   return fd;
 }
 
-
+int sys_wait(pid_t pid){
+  return process_wait(pid);
+}
 
 // [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
 void check_address(void *addr) {

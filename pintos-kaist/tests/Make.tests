@@ -14,8 +14,8 @@ ifdef PROGS
 include ../../Makefile.userprog
 endif
 
-TIMEOUT = 60
-MEMORY = 20
+TIMEOUT = 30
+MEMORY = 32
 SWAP_DISK = 4
 
 clean::
