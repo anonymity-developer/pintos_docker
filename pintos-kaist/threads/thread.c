@@ -238,8 +238,8 @@ tid_t thread_create(const char *name, int priority,
   //printf("%d\n", sizeof(t->fd_table));
   
   t->next_fd = 2;  // 0은 입력, 1은 출력에 이미 할당됨
-  t->fd_table[0] = 1;
-  t->fd_table[1] = 2;
+  t->fd_table[0] = NULL;
+  t->fd_table[1] = NULL;
 
 	/* Add to run queue. */
 	thread_unblock(t); // 스레드를 준비 큐에 추가 (실행 가능 상태로 변경)

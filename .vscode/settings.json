@@ -16,6 +16,12 @@
         "stdio.h": "c",
         "flags.h": "c",
         "loader.h": "c",
-        "palloc.h": "c"
+        "palloc.h": "c",
+        "atomic": "c",
+        "fstream": "c",
+        "sstream": "c",
+        "file.h": "c",
+        "list.h": "c",
+        "malloc.h": "c"
     }
 }

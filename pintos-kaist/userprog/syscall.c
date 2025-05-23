@@ -10,6 +10,8 @@
 typedef int pid_t;
 #include "threads/palloc.h"
 #include <string.h>
+#include <filesys/filesys.h>
+#include <filesys/file.h>
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *f);
@@ -149,22 +151,28 @@ sys_exit(int status) {
 int
 sys_write(int fd, const void *buffer, unsigned size) {
   check_address(buffer);
-  struct file *file = find_file_by_fd(fd);
-  int bytes_written = 0;
-  // 파일이 없거나, 표준입력인 경우 -1 리턴
-  if (file == NULL && fd == 0)
-    return -1;
   // 표준출력인 경우 콘솔에 출력
   if (fd == 1)
   {
     putbuf(buffer, size);
-    bytes_written = size;
-  } else {
-    lock_acquire(&filesys_lock);
-    bytes_written = file_write(file, buffer, size);
-    lock_release(&filesys_lock);
-    return bytes_written;
+    return size;
   }
+
+  // 파일이 없거나, 표준입력인 경우 -1 리턴
+
+  if (fd == 0){
+    return -1;
+  }
+  struct file *file = find_file_by_fd(fd);
+  if (file == NULL){
+    return -1;
+  }
+  int bytes_written = 0;
+  lock_acquire(&filesys_lock);
+  bytes_written = file_write(file, buffer, size);
+  lock_release(&filesys_lock);
+  return bytes_written;
+  
 }
 
 pid_t sys_fork(const char *thread_name, struct intr_frame *fff){
