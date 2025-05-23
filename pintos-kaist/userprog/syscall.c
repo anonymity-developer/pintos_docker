@@ -10,6 +10,8 @@
 typedef int pid_t;
 #include "threads/palloc.h"
 #include <string.h>
+#include <filesys/filesys.h>
+#include <filesys/file.h>
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *f);
@@ -29,6 +31,7 @@ void check_address(void *addr);
 pid_t sys_fork(const char *thread_name, struct intr_frame *fff);
 static struct file *find_file_by_fd(int fd);
 int sys_wait(pid_t pid);
+void check_buffer(void *buffer, unsigned size);
 
 /*
 이 파일에서 프로세스 생성과 실행을 관리한다
@@ -145,10 +148,11 @@ sys_exit(int status) {
   thread_exit();  // process_exit() → schedule() → _cleanup
 }
 
-// [*]2-K : 커널 write
+// // [*]2-K : 커널 write
 int
 sys_write(int fd, const void *buffer, unsigned size) {
-  check_address(buffer);
+  // check_address(buffer);
+  check_buffer(buffer, size);
   struct file *file = find_file_by_fd(fd);
   int bytes_written = 0;
   // 파일이 없거나, 표준입력인 경우 -1 리턴
@@ -164,8 +168,9 @@ sys_write(int fd, const void *buffer, unsigned size) {
     bytes_written = file_write(file, buffer, size);
     lock_release(&filesys_lock);
     return bytes_written;
-  }
+  }  
 }
+
 
 pid_t sys_fork(const char *thread_name, struct intr_frame *fff){
   check_address(thread_name);
@@ -217,6 +222,7 @@ sys_open(const char *file)
   {
     file_close(open_file);
     lock_release(&filesys_lock);
+    return -1; // 즉시 반환
   }
   lock_release(&filesys_lock);
   return fd;
@@ -229,10 +235,10 @@ sys_close(int fd){
   if (fd < 2 || fd >= OPEN_LIMIT || cur->fd_table[fd] == NULL)
     return;
   cur->fd_table[fd] = NULL;
-
+  
   lock_acquire(&filesys_lock);
   file_close(cur->fd_table[fd]);
-  lock_release(&filesys_lock);
+    lock_release(&filesys_lock);
 }
 
 
@@ -264,7 +270,8 @@ sys_create (const char *file, unsigned initial_size) {
 int
 sys_read(int fd, void *buffer, unsigned size)
 {
-  check_address(buffer);
+  // check_address(buffer);
+  check_buffer(buffer, size);
   
   // 읽은 바이트 수 저장할 변수
   int read_byte = 0;
@@ -282,11 +289,11 @@ sys_read(int fd, void *buffer, unsigned size)
       *read_buffer++ = key;
 
       // 널 문자를 만나면 종료한다.
-      if (key == '\0'){
-        break;
+      // if (key == '\0'){
+      //   break;
       }
     }
-  }
+  
   // 표준출력일 경우 -1을 리턴
   else if (fd == 1){
       return -1;
@@ -364,12 +371,20 @@ check_address(void *addr) {
   }
 }
 
+void check_buffer(void *buffer, unsigned size) {
+    uint8_t *start = buffer;
+    uint8_t *end = start + size;
+    for (; start < end; start += PGSIZE) {
+        check_address(start);
+    }
+}
+
 // [*]2-K: 파일을 현재 프로세스의 fdt에 추가
 int
 add_file_to_fdt (struct file *file)
 {
   struct thread *cur = thread_current ();
-    for (int fd = 2; fd < OPEN_LIMIT; fd++) {
+    for (int fd = 3; fd < OPEN_LIMIT; fd++) {
       if (cur->fd_table[fd] == NULL) {
           cur->fd_table[fd] = file;
           return fd;
