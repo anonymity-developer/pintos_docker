@@ -229,10 +229,7 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.eflags = FLAG_IF;				  // 인터럽트 플래그 설정 (인터럽트 활성화)
 
   // [*]2-K: 표준입력, 표준출력 할당 후 2부터 할당하기
-  t->fd_table = palloc_get_page(PAL_ZERO);
-  if(t->fd_table == NULL) {
-    return TID_ERROR;
-  }
+  memset(t->fd_table, 0, sizeof t->fd_table);
   
   t->next_fd = 2;  // 0은 입력, 1은 출력에 이미 할당됨
   t->fd_table[0] = 1;

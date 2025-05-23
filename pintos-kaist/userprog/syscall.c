@@ -94,9 +94,24 @@ syscall_handler (struct intr_frame *f UNUSED) {
   case SYS_CLOSE:
     sys_close(f->R.rdi);
     break;
-  // case SYS_READ:
-  //     f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
-  //     break;
+  case SYS_CREATE:
+    f->R.rax = sys_create(f->R.rdi, f->R.rsi);
+    break;
+  case SYS_READ:
+    f->R.rax = sys_read(f->R.rdi, f->R.rsi, f->R.rdx);
+    break;
+  case SYS_REMOVE:
+    f->R.rax = sys_remove(f->R.rdi);
+    break;
+  case SYS_SEEK:
+    sys_seek(f->R.rdi, f->R.rsi);
+    break;
+  case SYS_TELL:
+    f->R.rax = sys_tell(f->R.rdi);
+    break;
+  case SYS_FILESIZE:
+    f->R.rax = sys_filesize(f->R.rdi);
+    break;
   default:
     thread_exit ();
     break;
@@ -122,27 +137,22 @@ sys_exit(int status) {
 // [*]2-K : 커널 write
 int
 sys_write(int fd, const void *buffer, unsigned size) {
-
   check_address(buffer);
-  struct file *cur_file = find_file_by_fd(fd);
-  // 파일이 없다면 -1
-  if (cur_file == NULL)
+  struct file *file = find_file_by_fd(fd);
+  int bytes_written = 0;
+  // 파일이 없거나, 표준입력인 경우 -1 리턴
+  if (file == NULL && fd == 0)
     return -1;
   // 표준출력인 경우 콘솔에 출력
   if (fd == 1)
-    {
-      putbuf(buffer, size);
-      return size;
-    }
-  // 표준입력인 경우 리턴 -1
-  else if (fd == 0) {
-      return -1;
-  }
-  else {
+  {
+    putbuf(buffer, size);
+    bytes_written = size;
+  } else {
     lock_acquire(&filesys_lock);
-    int bytes_written = file_write(cur_file, buffer, size);
+    bytes_written = file_write(file, buffer, size);
     lock_release(&filesys_lock);
-    return (int)bytes_written;
+    return bytes_written;
   }
 }
 
@@ -181,7 +191,8 @@ sys_open(const char *file)
 
   if (open_file == NULL)
   {
-      return -1;
+    lock_release(&filesys_lock);
+    return -1;
   }
   // fd_table에 file추가
   int fd = add_file_to_fdt(open_file);
@@ -189,30 +200,23 @@ sys_open(const char *file)
   // fd_table 가득 찼을경우
   if (fd == -1)
   {
-      file_close(open_file);
+    file_close(open_file);
+    lock_release(&filesys_lock);
   }
   lock_release(&filesys_lock);
   return fd;
 }
 
-// [*]2-K 커널 close
+// [*]2-K 커널 close, 이미 open된 파일 닫음
 void 
 sys_close(int fd){
+  struct file *file = find_file_by_fd(fd);
   // 표준 입출력 0,1 인 경우 리턴하고 종료
-  if(fd < 2) 
-    return;
+   if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
 
-  // fd에 해당하는 파일 찾아서 변수에 담는다.
-  struct file *cur_file = find_file_by_fd(fd);
-  if (cur_file == NULL)
-    return;
-
-  // [*]2-K: fd_table에서 파일 삭제하는 함수
-  remove_file_from_fdt(fd);
-  
   lock_acquire(&filesys_lock);
-  // 파일 닫기 (원래 있던 함수)
-  file_close(cur_file);
+  file_close(file);
+  file = NULL;
   lock_release(&filesys_lock);
 }
 
@@ -223,20 +227,111 @@ sys_create (const char *file, unsigned initial_size) {
   check_address(file);
   lock_acquire(&filesys_lock);
   
-  if (filesys_create(file, initial_size)) {
-      lock_release(&filesys_lock);
-      return true;
-  } else {
-      lock_release(&filesys_lock);
-      return false;
-  }
+  // if (filesys_create(file, initial_size)) {
+  //     lock_release(&filesys_lock);
+  //     return true;
+  // } else {
+  //     lock_release(&filesys_lock);
+  //     return false;
+  // }
+  bool success = filesys_create(file, initial_size);
+  lock_release(&filesys_lock);
+
+  return success;
 }
 
-// bool sys_remove (const char *file);
-// int sys_filesize (int fd);
-// int sys_read (int fd, void *buffer, unsigned size);
-// void sys_seek (int fd, unsigned position);
-// unsigned sys_tell (int fd);
+// [*]2-K 커널 read, 사용자 입력일 때
+int
+sys_read(int fd, void *buffer, unsigned size)
+{
+  check_address(buffer);
+  
+  // 읽은 바이트 수 저장할 변수
+  int read_byte = 0;
+  // 버퍼를 바이트 단위로 접근하기 위한 포인터
+  uint8_t *read_buffer = buffer;
+
+  // 표준입력일 경우 데이터를 읽는다
+  if (fd == 0)
+  {
+    char key;
+    for (read_byte = 0; read_byte < size; read_byte++)
+    {
+      // input_getc 함수로 입력을 가져오고, buffer에 저장한다
+      key = input_getc();
+      *read_buffer++ = key;
+
+      // 널 문자를 만나면 종료한다.
+      if (key == '\0'){
+        break;
+      }
+    }
+  }
+  // 표준출력일 경우 -1을 리턴
+  else if (fd == 1){
+      return -1;
+  }
+  // 2이상, 즉 파일일 경우 파일을 읽어온다.
+  else {
+    struct file *file = find_file_by_fd(fd);
+    if (file == NULL){
+        return -1;
+    }
+    lock_acquire(&filesys_lock);
+    read_byte = file_read(file, buffer, size);
+    lock_release(&filesys_lock);
+  }
+
+  // 읽어온 바이트 수 리턴
+  return read_byte;
+}
+
+// [*]2-K 커널 remove, 디스크에서 파일 지움
+bool
+sys_remove (const char *file) {
+  check_address(file);
+
+  lock_acquire(&filesys_lock);
+  bool success = filesys_remove(file);
+  lock_release(&filesys_lock);
+
+  return success;
+}
+
+// [*]2-K 커널 seek, fdt에서 file 위치 찾기
+void 
+sys_seek (int fd, unsigned position){
+  struct file *file = find_file_by_fd(fd);
+  check_address(file);
+  if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
+
+  lock_acquire(&filesys_lock);
+  file_seek(file, position);
+  lock_release(&filesys_lock);
+}
+
+// [*]2-K 커널 tell, 시작 위치 변경
+unsigned sys_tell (int fd){
+  struct file *file = find_file_by_fd(fd);
+  check_address(file);
+  if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
+
+  return file_tell(file);
+}
+
+// [*]2-K 커널 filesize, fd 파일 길이 반환
+int 
+sys_filesize (int fd){
+  struct file *file = find_file_by_fd(fd);
+
+  if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return -1;
+
+  lock_acquire(&filesys_lock);
+  int length = file_length(file);
+  lock_release(&filesys_lock);
+
+  return length;
+}
 
 // [*]2-K 유저 영역에서 커널 영역 침범하지 않았는지 확인
 void 
@@ -261,22 +356,6 @@ add_file_to_fdt (struct file *file)
       }
   }
   return -1;
-  // struct file **fdt = cur->fd_table;     // fd_table 포인터 가져오기 (빨간줄 정상)
-  // int start = cur->next_fd;
-  // int fd = start;                        // fd를 start로 초기화 (빨간줄 정상)
-
-  // // 1) OPEN_LIMIT 범위 안에서 비어 있는 슬롯을 찾는다.
-  // while (fd < OPEN_LIMIT && fdt[fd] != NULL)
-  //   fd++;
-
-  // // 2) 빈 슬롯이 없으면 -1 리턴
-  // if (fd >= OPEN_LIMIT)
-  //   return -1;
-
-  // // 3) 빈 슬롯에 파일 저장, next_fd 갱신, fd 반환
-  // fdt[fd] = file;
-  // cur->next_fd = fd + 1;
-  // return fd;
 }
 
 // [*]2-K: fd 값을 넣으면 해당 file을 반환하는 함수
@@ -288,15 +367,4 @@ static struct file
         return NULL;
 
     return cur->fd_table[fd];
-}
-
-// [*]2-K: fd table에서 해당 파일을 지워준다.
-void 
-remove_file_from_fdt(int fd) {
-  struct thread *cur = thread_current();
-
-  if (fd < 0 || fd >= OPEN_LIMIT)
-      return;
-
-  cur->fd_table[fd] = NULL;
 }
