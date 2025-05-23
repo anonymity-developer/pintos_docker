@@ -28,7 +28,8 @@ typedef int tid_t;
 #define PRI_MIN 0	   /* Lowest priority. */
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63	   /* Highest priority. */
-#define OPEN_LIMIT 64
+#define OPEN_LIMIT 64 // 최대 동시 오픈가능한 파일 수
+
 
 /* A kernel thread or user process.
  *
@@ -123,26 +124,20 @@ struct thread
 	struct list donations;	   //[*]1-2-3. 중요도 양도한 애 리스트
 	struct list_elem d_elem;   //[*]1-2-3. 중요도 양도한 애 관리(prev, next)
 
-	// [*]2-B. wait()
+	// [*]2-B,O 자식의 종료신호를 기다리는 필드
 	struct list child_list;				// 자식 프로세스 정보 리스트
-	struct child_info *self_child_info; // 나 자신의 child_info (부모가 접근함)
+	struct list_elem child_elem;
 	struct thread *parent;				// 나를 만든 부모 스레드
 	int exit_status;					// exit(int status)에서 설정, 부모가 wait()에서 자식의 종료 코드를 수거할 수 있게 해주는 변수
-
-	// [*]2-B. exec()
-	struct semaphore load_sema; // 	exec 로딩 동기화용 세마포어 : process_execute()와 연동
-	bool load_success;			// 로드 성공여부 : 부모가 판단
+	// 복제가 잘 될때까지 부모가 기다리기 위한 세마포어
+	struct semaphore fork_sema;
+	// 자식의 종료상태를 기다리는 세마포어
+	struct semaphore exit_sema;
+	// 자식의 메모리 수거 상태를 기다리는 세마포어
+	struct semaphore free_sema;
 };
 
-// [*]2-B. 부모-자식 프로세스 관리용
-struct child_info
-{
-	tid_t tid;					// 자식의 tid
-	int exit_status;			// 자식의 종료 코드
-	bool waited;				// 부모가 wait() 했는지 여부
-	struct semaphore wait_sema; // 부모-자식 동기화용 세마포어
-	struct list_elem elem;		// child_list에서 쓰일 리스트 요소
-};
+
 
 int64_t min_wakeup_tick; //[*]1-1. global tick 선언
 
