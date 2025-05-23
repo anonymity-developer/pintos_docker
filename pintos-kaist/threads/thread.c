@@ -478,10 +478,10 @@ init_thread(struct thread *t, const char *name, int priority)
 	sema_init(&t->exit_sema, 0);
 	sema_init(&t->free_sema, 0);
 	sema_init(&t->fork_sema, 0);
+	t->running = NULL; // [*]2-B. 추가
 
 	// [*]2-o 정상종료가 될경우 값이 바뀌도록 스레드 생성시는 비정상 종료상태로
 	t->exit_status = -1;
-
 	t->parent = NULL;
 }
 

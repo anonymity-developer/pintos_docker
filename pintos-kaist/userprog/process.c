@@ -439,6 +439,8 @@ void process_exit(void)
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
+	file_close(cur->running);
+
 	sema_up(&cur->exit_sema);
 	sema_down(&cur->free_sema);
 	process_cleanup(); // 그 외 자원 정리 (page table, 파일 디스크립터 등)
@@ -655,6 +657,9 @@ load(const char *file_name, struct intr_frame *if_)
 		}
 	}
 
+	file_deny_write(file); // [*]2-B. 다른 프로세스에 의한 접근 막기
+	t->running = file;
+
 	/* Set up stack. */
 	if (!setup_stack(if_))
 		goto done;
@@ -671,7 +676,7 @@ load(const char *file_name, struct intr_frame *if_)
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close(file);
+	// file_close(file);
 	return success;
 }
 

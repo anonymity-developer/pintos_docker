@@ -99,13 +99,19 @@ struct thread
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */
 
+	// [*]2-B. 구조체 변경
+	struct file *fd_table[OPEN_LIMIT];  // 오픈한 파일을 가리키는 배열
+	struct file *running;
+ 	int next_fd; // 다음 오픈시 부여될 파일디스크립터
+	
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
 	// [*]2-O
 	// 커널에서 페이지 테이블 접근을 하기위한 포인터
-  struct file *fd_table[OPEN_LIMIT];  // 오픈한 파일을 가리키는 배열
-	int next_fd; // 다음 오픈시 부여될 파일디스크립터
+//  struct file *fd_table[OPEN_LIMIT];  // 오픈한 파일을 가리키는 배열
+// 	int next_fd; // 다음 오픈시 부여될 파일디스크립터
 
 #endif
 #ifdef VM
