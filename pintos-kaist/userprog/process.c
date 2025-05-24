@@ -1,4 +1,6 @@
 #include "userprog/process.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -8,8 +10,6 @@
 #include "userprog/gdt.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
-#include "filesys/file.h"
-#include "filesys/filesys.h"
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
@@ -369,7 +369,8 @@ int process_exec(void *f_name)
 	// 그에 맞는 시스템 콜 핸들러 함수가 호출되고
 	// 그 핸들러가 요청을 적당히 처리하고(출력, 프로세스 관리 등) ㄱ결과를 사용자 프로그램에 반환한 뒤 사용자 모드로 복귀
 
-	// printf("before do_iret\n");
+	//printf("before do_iret\n");
+	//printf("%" PRIX64 "\n",&_if.rip);
 	do_iret(&_if);
 	// do_iret가 호출된 이후로부턴 syscall.c에 구현된 syscall handler가 역할을 함.
 	NOT_REACHED();
@@ -390,7 +391,6 @@ int process_wait(tid_t child_tid) // UNUSED 지움
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-
 	if (child_tid == -1){
 		return -1;
 	}
@@ -417,10 +417,12 @@ int process_wait(tid_t child_tid) // UNUSED 지움
 		return -1;
 	}
 	sema_down(&real_child->exit_sema);	 // 자식이 종료될 때까지 대기 (sema_down)
+	//printf("sema up: %s\n", cur->name);
 	int status = real_child->exit_status; // 자식이 종료된 후 exit_status를 받아옴
 
 	list_remove(&real_child->child_elem);
 	sema_up(&real_child->free_sema);
+
 	return status;
 	
 	// // 자식 리스트에서 해당 pid를 찾지 못했거나 조건 미충족 시 -1 반환
@@ -589,6 +591,8 @@ load(const char *file_name, struct intr_frame *if_)
 		printf("load: %s: open failed\n", file_name);
 		goto done;
 	}
+	file_deny_write(file); // [*]2-B. 다른 프로세스에 의한 접근 막기
+	t->running = file;
 
 	/* Read and verify executable header. */
 	// 헤더 검증
@@ -657,8 +661,7 @@ load(const char *file_name, struct intr_frame *if_)
 		}
 	}
 
-	file_deny_write(file); // [*]2-B. 다른 프로세스에 의한 접근 막기
-	t->running = file;
+
 
 	/* Set up stack. */
 	if (!setup_stack(if_))
@@ -670,13 +673,13 @@ load(const char *file_name, struct intr_frame *if_)
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-	// if_->
+
 
 	success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	// file_close(file);
+	//file_close(file);
 	return success;
 }
 

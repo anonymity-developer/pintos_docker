@@ -99,7 +99,6 @@ void
 wait_children (pid_t pids[], size_t child_cnt) 
 {
   size_t i;
-  
   for (i = 0; i < child_cnt; i++) 
     {
       int status = wait (pids[i]);

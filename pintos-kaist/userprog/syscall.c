@@ -3,6 +3,8 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include <filesys/filesys.h>
+#include <filesys/file.h>
 #include "threads/loader.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
@@ -10,12 +12,7 @@
 typedef int pid_t;
 #include "threads/palloc.h"
 #include <string.h>
-#include <filesys/filesys.h>
-#include <filesys/file.h>
-<<<<<<< HEAD
 #include "userprog/process.h"
-=======
->>>>>>> dev
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *f);
@@ -145,7 +142,6 @@ void
 sys_exit(int status) {
   struct thread *cur = thread_current();
   
-
   // 정상적으로 종료됐으면 status는 0을 받는다.
   cur->exit_status = status;
   printf("%s: exit(%d)\n", cur->name, status);
@@ -156,6 +152,7 @@ sys_exit(int status) {
 int
 sys_write(int fd, const void *buffer, unsigned size) {
   // check_address(buffer);
+
   check_buffer(buffer, size);
   struct file *file = find_file_by_fd(fd);
   int bytes_written = 0;
@@ -184,20 +181,20 @@ pid_t sys_fork(const char *thread_name, struct intr_frame *fff){
 int
 sys_exec(const char *cmd_line) {
   // 유저 영역에서 커널 영역 침범하지 않았는지 확인
-  check_address(cmd_line);
 
+  check_address(cmd_line);
   // 커널 영역에 명령어 복사를 위한 공간 확보
   int cmd_line_size = strlen(cmd_line) + 1;
   char *cm_copy = palloc_get_page(PAL_ZERO);  // 커널 메모리 확보
   if (cm_copy == NULL)
-  {
+  { 
     sys_exit(-1);
   }
   strlcpy(cm_copy, cmd_line, cmd_line_size);  // 안전하게 복사해둠
   
   // file 실행이 실패했다면 -1을 리턴한다.
   if (process_exec(cm_copy) == -1)
-  {
+  {   
       return -1;
   }
   // 정상적으로 process_exec 실행되면 아래 부분은 실행되지 않음.
@@ -209,6 +206,7 @@ sys_exec(const char *cmd_line) {
 int 
 sys_open(const char *file)
 {
+
   check_address(file);
   lock_acquire(&filesys_lock);
   struct file *open_file = filesys_open(file);
@@ -275,6 +273,7 @@ int
 sys_read(int fd, void *buffer, unsigned size)
 {
   // check_address(buffer);
+
   check_buffer(buffer, size);
   
   // 읽은 바이트 수 저장할 변수
@@ -321,6 +320,7 @@ sys_read(int fd, void *buffer, unsigned size)
 // [*]2-K 커널 remove, 디스크에서 파일 지움
 bool
 sys_remove (const char *file) {
+
   check_address(file);
 
   lock_acquire(&filesys_lock);
@@ -334,7 +334,9 @@ sys_remove (const char *file) {
 void 
 sys_seek (int fd, unsigned position){
   struct file *file = find_file_by_fd(fd);
-  check_address(file);
+
+  // [*]2-o **여기 주석하니까 syn-write 통과
+  //check_address(file);
   if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
 
   lock_acquire(&filesys_lock);
@@ -345,6 +347,7 @@ sys_seek (int fd, unsigned position){
 // [*]2-K 커널 tell, 시작 위치 변경
 unsigned sys_tell (int fd){
   struct file *file = find_file_by_fd(fd);
+
   check_address(file);
   if (fd < 2 || fd >= OPEN_LIMIT || file == NULL) return;
 
@@ -376,6 +379,7 @@ check_address(void *addr) {
   }
 }
 
+// [*]2-B. 버퍼 전체범위 검사
 void check_buffer(void *buffer, unsigned size) {
     uint8_t *start = buffer;
     uint8_t *end = start + size;
