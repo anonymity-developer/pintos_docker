@@ -12,6 +12,7 @@ typedef int pid_t;
 #include <string.h>
 #include <filesys/filesys.h>
 #include <filesys/file.h>
+#include "userprog/process.h"
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame *f);
@@ -289,6 +290,7 @@ sys_read(int fd, void *buffer, unsigned size)
       key = input_getc();
       *read_buffer++ = key;
 
+      
       // 널 문자를 만나면 종료한다.
       if (key == '\0'){
         break;

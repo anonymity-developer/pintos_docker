@@ -127,6 +127,12 @@ kill (struct intr_frame *f) {
    can find more information about both of these in the
    description of "Interrupt 14--Page Fault Exception (#PF)" in
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
+
+   /* 
+   [*]2-o
+   project2는 페이지 폴트시 바로 프로세스 죽임
+   project3부턴 페이지 폴트시 빈 페이지 찾아줌
+    */
 static void
 page_fault (struct intr_frame *f) {
 	bool not_present;  /* True: not-present page, false: writing r/o page. */
@@ -147,9 +153,23 @@ page_fault (struct intr_frame *f) {
 
 
 	/* Determine cause. */
+	/* 
+	[*]2-o 여기서 오류 정보 감별 
+	1. 참이면 존재하지 않는 페이지에 접근한 경우, 거짓이면 페이지는 있었지만 읽기전용에 쓰기를 한 경우
+	2. 참이면 접근이 쓰기였던 경우, 거짓이면 접근이 읽기였던 경우
+	3. 참이면 접근 주체가 유저모드, 거짓이면 접근 주체가 커널모드
+	*/
 	not_present = (f->error_code & PF_P) == 0;
 	write = (f->error_code & PF_W) != 0;
 	user = (f->error_code & PF_U) != 0;
+	
+	if (is_kernel_vaddr(fault_addr)){
+		sys_exit(-1);
+		return;
+	}else if(not_present){
+		sys_exit(-1);
+		return;
+	}
 
 #ifdef VM
 	/* For project 3 and later. */
