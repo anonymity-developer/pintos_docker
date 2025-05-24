@@ -22,6 +22,7 @@
         "sstream": "c",
         "file.h": "c",
         "list.h": "c",
-        "malloc.h": "c"
-    }
+        "malloc.h": "c",
+        "syn-read.h": "c"
+}
 }
